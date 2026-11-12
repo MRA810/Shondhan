@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { login, setToken } from "../api.js";
 import { usePrefs } from "../prefs.jsx";
 import Toggles from "./Toggles.jsx";
@@ -49,6 +49,7 @@ export default function Login() {
           </div>
           {err && <p className="error" role="alert">{t(err)}</p>}
           <button className="primary" disabled={busy}>{busy ? t("loading") : t("submit")}</button>
+          <p className="note">{t("noAccount")} <Link to="/signup">{t("signup")}</Link></p>
           <p className="note">{t("staffNote")}</p>
         </form>
       </section>

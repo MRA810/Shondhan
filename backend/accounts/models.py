@@ -14,3 +14,8 @@ class User(AbstractUser):
     role = models.CharField(max_length=10, choices=Role.choices, default=Role.FAMILY)
     failed_attempts = models.PositiveSmallIntegerField(default=0)
     locked_until = models.DateTimeField(null=True, blank=True)
+
+    age = models.PositiveSmallIntegerField(null=True, blank=True)
+    relationship = models.CharField(max_length=12, blank=True)
+    consent_version = models.CharField(max_length=10, blank=True)
+    consent_at = models.DateTimeField(null=True, blank=True)

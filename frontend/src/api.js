@@ -15,9 +15,11 @@ async function call(path, { method = "GET", body, auth } = {}) {
     throw { code: "network" };
   }
   const data = await res.json().catch(() => ({}));
+  if (res.status === 400) throw { code: "validation", fields: data };
   if (!res.ok) throw { code: data.code || (res.status === 401 ? "invalid" : "network"), status: res.status };
   return data;
 }
 
 export const login = (identifier, password) => call("login/", { method: "POST", body: { identifier, password } });
 export const me = () => call("me/", { auth: true });
+export const register = (body) => call("register/", { method: "POST", body });
