@@ -21,5 +21,7 @@ async function call(path, { method = "GET", body, auth } = {}) {
 }
 
 export const login = (identifier, password) => call("login/", { method: "POST", body: { identifier, password } });
-export const me = () => call("me/", { auth: true });
 export const register = (body) => call("register/", { method: "POST", body });
+export const me = () => call("me/", { auth: true });
+export const getCases = () => call("cases/", { auth: true });
+export const getCaseMatches = (caseId) => call(`cases/${caseId}/matches/`, { auth: true });

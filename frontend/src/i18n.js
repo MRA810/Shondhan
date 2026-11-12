@@ -22,6 +22,7 @@ export const messages = {
     network: "সার্ভারে সংযোগ হচ্ছে না। ইন্টারনেট দেখে আবার চেষ্টা করুন।",
     required: "এই ঘরটি পূরণ করুন।", staffNote: "পুলিশ ও হাসপাতালের অ্যাকাউন্ট অ্যাডমিন অনুমোদন করেন।",
     welcome: "স্বাগতম", logout: "লগআউট", dashSoon: "ড্যাশবোর্ড শীঘ্রই আসছে।",
+    your_cases: "আপনার কেসগুলো", no_cases: "এখনও কোনো কেস রিপোর্ট করা হয়নি।",
     lang: "English", dark: "ডার্ক", light: "লাইট",
   },
   en: {
@@ -47,6 +48,7 @@ export const messages = {
     network: "Cannot reach the server. Check your internet and try again.",
     required: "Please fill in this field.", staffNote: "Police and hospital accounts are approved by an admin.",
     welcome: "Welcome", logout: "Log out", dashSoon: "Dashboard is coming soon.",
+    your_cases: "Your Cases", no_cases: "No cases reported yet.",
     lang: "বাংলা", dark: "Dark", light: "Light",
   },
 };

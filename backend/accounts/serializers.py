@@ -11,7 +11,23 @@ class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source="first_name")
     class Meta:
         model = User
-        fields = ("id", "full_name", "phone", "email", "role", "age", "relationship")
+        fields = ("id", "full_name", "phone", "email", "role", "age", "relationship", "consent_version", "consent_at", "date_joined", "last_login")
+
+# Serializers for Family Cases and Matches
+from .models import FamilyCase, CaseMatch
+
+class FamilyCaseSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FamilyCase
+        fields = ("id", "user", "name", "age", "gender", "last_seen_location", "last_seen_date", "traits", "attire", "contact_phone", "contact_email", "status", "created_at", "updated_at")
+        read_only_fields = ("user", "created_at", "updated_at")
+
+class CaseMatchSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CaseMatch
+        fields = ("id", "case", "source_type", "source_name", "contact", "location", "match_score", "matched_traits", "status", "found_date", "created_at")
+        read_only_fields = ("case", "created_at")
+
 
 class RegisterSerializer(serializers.Serializer):
     full_name = serializers.CharField(max_length=100)
