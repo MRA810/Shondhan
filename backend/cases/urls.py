@@ -1,13 +1,11 @@
 from django.urls import path
-from . import views
+from .views import CaseCreateView, CaseDetailView, NotificationListView, NotificationReadView, PhotoView, SummaryView
 
 urlpatterns = [
-    path("dashboard/", views.DashboardView.as_view()),
-    path("cases/", views.CaseList.as_view()),
-    path("cases/<int:pk>/", views.CaseDetail.as_view()),
-    path("cases/<int:pk>/matches/", views.CaseMatches.as_view()),
-    path("matches/<int:pk>/", views.MatchDetail.as_view()),
-    path("notifications/", views.NotificationList.as_view()),
-    path("notifications/unread/", views.UnreadCount.as_view()),
-    path("notifications/read-all/", views.ReadAll.as_view()),
+    path("summary/", SummaryView.as_view()),
+    path("notifications/", NotificationListView.as_view()),
+    path("notifications/read/", NotificationReadView.as_view()),
+    path("cases/", CaseCreateView.as_view()),
+    path("cases/<int:pk>/", CaseDetailView.as_view()),
+    path("cases/<int:pk>/photos/<int:photo_id>/", PhotoView.as_view()),
 ]

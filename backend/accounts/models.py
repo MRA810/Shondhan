@@ -20,7 +20,7 @@ class User(AbstractUser):
     consent_version = models.CharField(max_length=10, blank=True)
     consent_at = models.DateTimeField(null=True, blank=True)
 
-    # profile extras (new)
+    # optional profile details the family can add later
     alt_phone = models.CharField(max_length=20, blank=True)
-    address = models.CharField(max_length=255, blank=True)
     division = models.CharField(max_length=20, blank=True)
+    address = models.CharField(max_length=200, blank=True)

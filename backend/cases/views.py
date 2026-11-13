@@ -1,120 +1,90 @@
+from django.db import transaction
 from django.db.models import Count, Max, Q
-from rest_framework import generics
+from django.http import FileResponse
+from django.shortcuts import get_object_or_404
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .matching import run_for_case
-from .models import MATCH_VISIBLE, Match, MissingCase, Notification, RecordVisit
-from .serializers import (CaseSerializer, MatchDetailSerializer, MatchListSerializer,
-                          NotificationSerializer)
-
-NOTIF_VISIBLE = Q(match__record__is_active=True) & ~Q(match__record__condition="deceased")
+from .models import MAX_ACTIVE_CASES, Case, CasePhoto, Match, Notification
+from .permissions import IsFamily
+from .serializers import CaseCreateSerializer, CaseSerializer, MatchSerializer, NotificationSerializer
 
 
-class FamilyOnly(IsAuthenticated):
-    def has_permission(self, request, view):
-        return super().has_permission(request, view) and request.user.role == "family"
+class FamilyView(APIView):
+    permission_classes = [IsAuthenticated, IsFamily]
 
 
-class CaseList(generics.ListCreateAPIView):
-    permission_classes = [FamilyOnly]
-    parser_classes = [MultiPartParser, FormParser]
-    serializer_class = CaseSerializer
-
-    def get_queryset(self):
-        return MissingCase.objects.filter(owner=self.request.user).prefetch_related("photos")
-
-    def perform_create(self, serializer):
-        case = serializer.save(owner=self.request.user)
-        run_for_case(case)
-
-
-class CaseDetail(generics.RetrieveDestroyAPIView):
-    """DELETE = person found: the post, photos and matches are removed completely."""
-    permission_classes = [FamilyOnly]
-    serializer_class = CaseSerializer
-
-    def get_queryset(self):
-        return MissingCase.objects.filter(owner=self.request.user).prefetch_related("photos")
-
-
-class CaseMatches(generics.ListAPIView):
-    permission_classes = [FamilyOnly]
-    serializer_class = MatchListSerializer
-
-    def get_queryset(self):
-        return (Match.objects.filter(MATCH_VISIBLE, case_id=self.kwargs["pk"], case__owner=self.request.user)
-                .select_related("record").order_by("-score"))
-
-
-class MatchDetail(generics.RetrieveAPIView):
-    permission_classes = [FamilyOnly]
-    serializer_class = MatchDetailSerializer
-
-    def get_queryset(self):
-        return Match.objects.filter(MATCH_VISIBLE, case__owner=self.request.user).select_related("record", "case")
-
-    def retrieve(self, request, *args, **kwargs):
-        m = self.get_object()
-        RecordVisit.objects.create(user=request.user, record=m.record, case=m.case)  # who visited which record
-        if not m.seen:
-            m.seen = True
-            m.save(update_fields=["seen"])
-        Notification.objects.filter(user=request.user, match=m, read=False).update(read=True)
-        return Response(self.get_serializer(m).data)
-
-
-class DashboardView(APIView):
-    permission_classes = [FamilyOnly]
+class SummaryView(FamilyView):
+    """Everything the family dashboard needs in one request."""
 
     def get(self, request):
-        u = request.user
-        vis = Q(matches__record__is_active=True) & ~Q(matches__record__condition="deceased")
-        cases = (MissingCase.objects.filter(owner=u)
-                 .annotate(match_total=Count("matches", filter=vis),
-                           new_total=Count("matches", filter=vis & Q(matches__seen=False)),
-                           best=Max("matches__score", filter=vis))
-                 .prefetch_related("photos"))
-        out = []
-        for c in cases:
-            face = next((p for p in c.photos.all() if p.kind == "face"), None)
-            out.append({
-                "id": c.id, "person_name": c.person_name, "age_approx": c.age_approx, "division": c.division,
-                "photo": request.build_absolute_uri(face.image.url) if face else None,
-                "match_total": c.match_total, "new_total": c.new_total, "best": c.best,
-            })
-        top = (Match.objects.filter(MATCH_VISIBLE, case__owner=u, seen=False)
-               .select_related("case").order_by("-score")[:3])
+        user = request.user
+        cases = Case.objects.filter(owner=user).prefetch_related("photos").annotate(
+            match_count=Count("matches", distinct=True),
+            best_score=Max("matches__score", filter=Q(matches__record_kind=Match.Kind.LIVING)),
+        )
+        matches = Match.objects.filter(case__owner=user).select_related("case")[:20]
+        notes = Notification.objects.filter(user=user).select_related("case", "match")
+        unread = notes.filter(is_read=False)
+        alert = unread.exclude(kind=Notification.Kind.SYSTEM).first()  # newest unread match/officer alert
+        cases_data = CaseSerializer(cases, many=True).data
         return Response({
-            "cases": out,
-            "new_matches": Match.objects.filter(MATCH_VISIBLE, case__owner=u, seen=False).count(),
-            "top_matches": [{"match_id": m.id, "case_id": m.case_id, "person_name": m.case.person_name,
-                             "score": m.score} for m in top],
+            "cases": cases_data,
+            "matches": MatchSerializer(matches, many=True).data,
+            "notifications": NotificationSerializer(notes[:3], many=True).data,
+            "alert": NotificationSerializer(alert).data if alert else None,
+            "stats": {
+                "cases": len(cases_data),
+                "matches": Match.objects.filter(case__owner=user).count(),
+                "unread": unread.count(),
+            },
         })
 
 
-class NotificationList(generics.ListAPIView):
-    permission_classes = [FamilyOnly]
-    serializer_class = NotificationSerializer
-
-    def get_queryset(self):
-        return (Notification.objects.filter(NOTIF_VISIBLE, user=self.request.user)
-                .select_related("match__case")[:50])
-
-
-class UnreadCount(APIView):
-    permission_classes = [FamilyOnly]
-
+class NotificationListView(FamilyView):
     def get(self, request):
-        n = Notification.objects.filter(NOTIF_VISIBLE, user=request.user, read=False).count()
-        return Response({"count": n})
+        notes = Notification.objects.filter(user=request.user).select_related("case", "match")[:100]
+        return Response(NotificationSerializer(notes, many=True).data)
 
 
-class ReadAll(APIView):
-    permission_classes = [FamilyOnly]
+class NotificationReadView(FamilyView):
+    """Mark notifications as read: body {"ids": [1, 2]} or empty for all."""
 
     def post(self, request):
-        Notification.objects.filter(user=request.user, read=False).update(read=True)
-        return Response({"ok": True})
+        qs = Notification.objects.filter(user=request.user, is_read=False)
+        ids = request.data.get("ids")
+        if isinstance(ids, list):
+            qs = qs.filter(id__in=[i for i in ids if isinstance(i, int)])
+        return Response({"updated": qs.update(is_read=True)})
+
+
+class CaseCreateView(FamilyView):
+    """File a missing-person report: details + at least 3 photos (+ optional ID pictures)."""
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        if Case.objects.filter(owner=request.user).count() >= MAX_ACTIVE_CASES:
+            return Response({"code": "limit"}, status=409)
+        s = CaseCreateSerializer(data=request.data, context={"request": request})
+        s.is_valid(raise_exception=True)
+        with transaction.atomic():
+            case = s.save()
+        return Response({"id": case.id}, status=201)
+
+
+class PhotoView(FamilyView):
+    """Pictures are private: only the owner can fetch them, never from a public URL."""
+
+    def get(self, request, pk, photo_id):
+        photo = get_object_or_404(CasePhoto, pk=photo_id, case_id=pk, case__owner=request.user)
+        return FileResponse(photo.image.open("rb"), headers={
+            "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
+class CaseDetailView(FamilyView):
+    def delete(self, request, pk):
+        """Person found: remove the report and everything linked to it, completely."""
+        get_object_or_404(Case, pk=pk, owner=request.user).delete()
+        return Response(status=204)

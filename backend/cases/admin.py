@@ -1,24 +1,20 @@
 from django.contrib import admin
-from .models import CasePhoto, FoundRecord, Match, MissingCase, Notification, RecordVisit
+from .models import Case, Match, Notification
 
 
-class PhotoInline(admin.TabularInline):
-    model = CasePhoto
-    extra = 0
+@admin.register(Case)
+class CaseAdmin(admin.ModelAdmin):
+    list_display = ("person_name", "owner", "created_at")
+    search_fields = ("person_name", "owner__phone")
 
 
-@admin.register(MissingCase)
-class MissingCaseAdmin(admin.ModelAdmin):
-    list_display = ("person_name", "owner", "division", "created_at")
-    inlines = [PhotoInline]
+@admin.register(Match)
+class MatchAdmin(admin.ModelAdmin):
+    list_display = ("case", "record_kind", "score", "verified", "created_at")
+    list_filter = ("record_kind", "verified")
 
 
-@admin.register(FoundRecord)
-class FoundRecordAdmin(admin.ModelAdmin):  # stand-in for the police/medical portal
-    list_display = ("id", "source", "condition", "gender", "division", "is_active", "created_at")
-    list_filter = ("source", "condition", "is_active")
-
-
-admin.site.register(Match)
-admin.site.register(Notification)
-admin.site.register(RecordVisit)
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ("user", "kind", "case", "is_read", "created_at")
+    list_filter = ("kind", "is_read")
