@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User
-from .serializers import RegisterSerializer, UserSerializer
+from .serializers import ProfileUpdateSerializer, RegisterSerializer, UserSerializer
 
 MAX_FAILS, LOCK_MIN = 5, 15
 
@@ -52,33 +52,8 @@ class MeView(APIView):
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
-# Family cases endpoints
-from rest_framework import generics, permissions
-from .serializers import FamilyCaseSerializer, CaseMatchSerializer
-from .models import FamilyCase, CaseMatch
-
-class FamilyCaseListCreateView(generics.ListCreateAPIView):
-    """List cases for the authenticated family user, or create a new case."""
-    serializer_class = FamilyCaseSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        # Only return cases belonging to the requesting user
-        return FamilyCase.objects.filter(user=self.request.user).order_by('-created_at')
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-class CaseMatchListView(generics.ListAPIView):
-    """List matches for a given case. Accessible by the case owner."""
-    serializer_class = CaseMatchSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        case_id = self.kwargs.get('case_id')
-        # Ensure the case belongs to the user
-        try:
-            case = FamilyCase.objects.get(id=case_id, user=self.request.user)
-        except FamilyCase.DoesNotExist:
-            return CaseMatch.objects.none()
-        return CaseMatch.objects.filter(case=case).order_by('-created_at')
+    def patch(self, request):
+        s = ProfileUpdateSerializer(request.user, data=request.data, partial=True)
+        s.is_valid(raise_exception=True)
+        s.save()
+        return Response(UserSerializer(request.user).data)

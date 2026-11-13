@@ -14,7 +14,7 @@ ALLOWED_HOSTS = env("DJANGO_ALLOWED_HOSTS", "localhost").split(",")
 INSTALLED_APPS = [
     "django.contrib.admin", "django.contrib.auth", "django.contrib.contenttypes",
     "django.contrib.sessions", "django.contrib.messages", "django.contrib.staticfiles",
-    "corsheaders", "rest_framework", "accounts",
+    "corsheaders", "rest_framework", "accounts", "cases.apps.CasesConfig",
 ]
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -58,4 +58,6 @@ LANGUAGE_CODE = "en"
 TIME_ZONE = "Asia/Dhaka"
 USE_TZ = True
 STATIC_URL = "static/"
+MEDIA_URL = "/media/"
+MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
