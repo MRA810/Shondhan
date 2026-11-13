@@ -1,71 +1,68 @@
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { clearToken, me, getCases, getCaseMatches } from "../api.js";
+import { Link } from "react-router-dom";
+import { dashboard, me } from "../api.js";
+import Score from "../components/Score.jsx";
+import Shell from "../components/Shell.jsx";
+import { fmtNum, useApi } from "../hooks.js";
 import { usePrefs } from "../prefs.jsx";
-import Toggles from "./Toggles.jsx";
 
 export default function Dashboard() {
-  const { t } = usePrefs();
-  const nav = useNavigate();
-  const [user, setUser] = useState(null);
-  const [cases, setCases] = useState([]);
-  const [error, setError] = useState(null);
-
-  // Load authenticated user profile
-  useEffect(() => {
-    me()
-      .then(setUser)
-      .catch(() => {
-        clearToken();
-        nav("/login");
-      });
-  }, [nav]);
-
-  // Load family cases for this user
-  useEffect(() => {
-    if (!user) return;
-    getCases()
-      .then((data) => setCases(data))
-      .catch((e) => setError(e?.code || "Failed to load cases"));
-  }, [user]);
-
-  const renderCase = (c) => (
-    <details key={c.id} className="case-card glass">
-      <summary>{c.name} (Age: {c.age}, {c.gender})</summary>
-      <p><strong>Last seen:</strong> {c.last_seen_location} on {c.last_seen_date}</p>
-      <p><strong>Traits:</strong> {c.traits || "—"}</p>
-      <p><strong>Attire:</strong> {c.attire || "—"}</p>
-      <p><strong>Contact:</strong> {c.contact_phone} {c.contact_email && `| ${c.contact_email}`}</p>
-      <p><strong>Status:</strong> {c.status}</p>
-    </details>
-  );
+  const { t, lang } = usePrefs();
+  const user = useApi(me).data;
+  const { data, error, loading } = useApi(dashboard);
+  const top = data?.top_matches?.[0];
 
   return (
-    <main className="page">
-      <Toggles />
-      <section className="glass wide">
-        <h2>{t("welcome")}{user ? `, ${user.full_name}` : ""}</h2>
-        {user && (
-          <div className="profile-card glass">
-            <p><strong>ID:</strong> {user.id}</p>
-            <p><strong>Name:</strong> {user.full_name}</p>
-            <p><strong>Phone:</strong> {user.phone}</p>
-            <p><strong>Email:</strong> {user.email}</p>
-            <p><strong>Role:</strong> {user.role}</p>
-            <p><strong>Age:</strong> {user.age}</p>
-            <p><strong>Relationship:</strong> {user.relationship}</p>
+    <Shell>
+      <h2 className="greet">{t("welcome")}{user ? `, ${user.full_name}` : ""}</h2>
+      {error && <p className="error" role="alert">{t(error)}</p>}
+      {loading && !data && <p className="note">{t("loading")}</p>}
+
+      {top && (
+        <Link className="alert" role="status"
+              to={data.new_matches > 1 ? "/notifications" : `/matches/${top.match_id}`}>
+          <Score value={top.score} big />
+          <div className="alert-text">
+            <h2>{t("alertTitle")}</h2>
+            <p>{fmtNum(data.new_matches, lang)} {t("alertCount")}: {top.person_name}</p>
           </div>
-        )}
-        <hr />
-        <h3>{t("your_cases") || "Your Cases"}</h3>
-        {error && <p className="error">{error}</p>}
-        {cases.length === 0 ? (
-          <p>{t("no_cases") || "No cases reported yet."}</p>
-        ) : (
-          cases.map(renderCase)
-        )}
-        <button className="primary" onClick={() => { clearToken(); nav("/login"); }}>{t("logout")}</button>
-      </section>
-    </main>
+          <span className="alert-cta">{t("alertCta")}</span>
+        </Link>
+      )}
+
+      {data && (
+        <section className="glass">
+          <div className="rowhead">
+            <h2>{t("myCases")}</h2>
+            <Link className="primary linkbtn" to="/report">{t("reportBtn")}</Link>
+          </div>
+          {data.cases.length === 0 ? (
+            <div className="empty">
+              <p>{t("noCases")}</p>
+              <p className="note">{t("noCasesHint")}</p>
+            </div>
+          ) : (
+            <ul className="cases">
+              {data.cases.map((c) => (
+                <li key={c.id}>
+                  <Link to={`/cases/${c.id}`} className="casecard">
+                    {c.photo ? <img className="thumb" src={c.photo} alt="" /> : <div className="thumb" />}
+                    <div className="caseinfo">
+                      <strong>{c.person_name}</strong>
+                      <span>{t("div_" + c.division)}{c.age_approx ? `, ${t("pAge")}: ${fmtNum(c.age_approx, lang)}` : ""}</span>
+                      <span className={c.new_total ? "tag hot" : "tag"}>
+                        {c.new_total
+                          ? `${fmtNum(c.new_total, lang)} ${t("newN")}`
+                          : `${t("matchesLabel")}: ${fmtNum(c.match_total, lang)}`}
+                      </span>
+                    </div>
+                    {c.best ? <Score value={c.best} /> : null}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+    </Shell>
   );
 }
