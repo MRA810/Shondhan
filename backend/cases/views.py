@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 from accounts.models import User
 from accounts.permissions import CanBrowseReports, IsAdmin, IsAuditor, IsFamily, IsOfficer, IsReporter
 from accounts.serializers import RegisterSerializer, UserSerializer, clean_phone
-from . import services
+from . import faces, services
 from .matching import find_duplicates, run_for_case, run_for_record
 from .models import (MAX_ACTIVE_CASES, AuditLog, CasePhoto, FoundRecord, MergeRequest, Match, MissingCase,
                      Notification, PhotoKind, RecordPhoto)
@@ -148,6 +148,7 @@ class CaseCreateView(FamilyView):
             case = s.save()
             services.audit(request, "create_case", "case", case.id)
             run_for_case(case)
+            faces.schedule("case", case.id)  # then compare the photos too, in the background
         return Response({"id": case.id}, status=201)
 
 
@@ -204,6 +205,7 @@ class RegisterWithReportView(APIView):
             case = case_s.save()
             services.audit(request, "create_case", "case", case.id, user=user, with_signup=True)
             run_for_case(case)
+            faces.schedule("case", case.id)
         return Response({**login_payload(user), "case_id": case.id}, status=201)
 
 
@@ -254,6 +256,7 @@ class RecordListCreateView(ReporterView):
             services.audit(request, "create_record", "record", rec.id, condition=rec.condition)
             run_for_record(rec)
             find_duplicates(rec)
+            faces.schedule("record", rec.id)
         return Response({"id": rec.id}, status=201)
 
 
@@ -279,6 +282,7 @@ class RecordDetailView(ReporterView):
             services.audit(request, "update_record", "record", rec.id, fields=sorted(k for k in request.data.keys()))
             run_for_record(rec)
             find_duplicates(rec)
+            faces.schedule("record", rec.id)
         return Response(RecordSerializer(rec).data)
 
     def delete(self, request, pk):
@@ -353,6 +357,7 @@ class OfficerMatchView(OfficerView):
         case["owner"] = owner_contact(m.case.owner)
         return Response({
             "id": m.id, "score": m.score, "band": m.band, "reasons": m.reasons, "status": m.status,
+            "face_score": m.face_score, "face_pair": m.face_pair,
             "restricted": m.restricted, "review_note": m.review_note, "created_at": m.created_at,
             "reviewed_by": m.reviewed_by.first_name if m.reviewed_by else "", "reviewed_at": m.reviewed_at,
             "case": case, "record": RecordSerializer(m.record).data,

@@ -29,7 +29,8 @@ def _not_future(v):
 
 
 def photo_list(obj, kinds=(PhotoKind.PHOTO, PhotoKind.DOCUMENT)):
-    return [{"id": p.id, "kind": p.kind} for p in obj.photos.all() if p.kind in kinds]
+    # face: pending / ok / none (no clear face found) / off / error, so the page can ask for a clearer photo
+    return [{"id": p.id, "kind": p.kind, "face": p.face_status} for p in obj.photos.all() if p.kind in kinds]
 
 
 def first_photo(obj):
@@ -309,7 +310,7 @@ class QueueSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Match
-        fields = ("id", "score", "band", "reasons", "status", "restricted", "created_at", "case", "record")
+        fields = ("id", "score", "band", "reasons", "status", "restricted", "created_at", "case", "record", "face_score")
 
     def get_case(self, obj):
         c = obj.case

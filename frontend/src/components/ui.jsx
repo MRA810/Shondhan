@@ -157,11 +157,17 @@ export function PersonFacts({ p, hide = [], figure = true }) {
   );
 }
 
-export function PhotoGrid({ kind, photos, alt, small }) {
+export function PhotoGrid({ kind, photos, alt, small, highlight }) {
+  const { t } = usePrefs();
   if (!photos?.length) return null;
   return (
     <ul className={small ? "photos small" : "photos"}>
-      {photos.map((p) => <li key={p.id ?? p}><Photo kind={kind} id={p.id ?? p} alt={alt} className="gridphoto" /></li>)}
+      {photos.map((p) => (
+        <li key={p.id ?? p} className={highlight?.includes(p.id) ? "facehit" : ""}>
+          <Photo kind={kind} id={p.id ?? p} alt={alt} className="gridphoto" />
+          {p.face === "none" && <span className="noface">{t("noFace")}</span>}
+        </li>
+      ))}
     </ul>
   );
 }

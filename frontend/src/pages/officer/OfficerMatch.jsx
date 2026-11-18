@@ -4,7 +4,7 @@ import { getOfficerMatch, reunite, reviewMatch } from "../../api.js";
 import { useApi } from "../../hooks.js";
 import MarksFigure from "../../body/MarksFigure.jsx";
 import { usePrefs } from "../../prefs.jsx";
-import { Band, Confirm, Icon, Loaded, PhotoGrid, Score, StatusPill, ageText, clothText, markText, traitsText } from "../../components/ui.jsx";
+import { Band, Confirm, Icon, Loaded, Photo, PhotoGrid, Score, StatusPill, ageText, clothText, markText, traitsText } from "../../components/ui.jsx";
 
 function Compare({ c, r, reasons }) {
   const { t, dateTime } = usePrefs();
@@ -78,10 +78,24 @@ export default function OfficerMatch() {
             <ul className="chips">{m.reasons.map((x) => <li key={x} className="pill hot">{t(`r_${x}`)}</li>)}</ul>
           </section>
 
+          <section className="panel facepanel">
+            <h2>{t("faceTitle")}</h2>
+            {m.face_score != null && m.face_pair ? (
+              <>
+                <div className="facepair">
+                  <Photo kind="case" id={m.face_pair[0]} alt={t("photoAlt", { name: c.person_name })} className="gridphoto" />
+                  <strong className="facepct">{t("faceScore", { n: m.face_score })}</strong>
+                  <Photo kind="record" id={m.face_pair[1]} alt={t("foundPhoto")} className="gridphoto" />
+                </div>
+                <p className="small muted">{t("faceHelp")}</p>
+              </>
+            ) : <p className="small muted">{t("faceNone")}</p>}
+          </section>
+
           <div className="sidebyside">
             <section className="panel">
               <h2>{t("side_family")}</h2>
-              <PhotoGrid kind="case" photos={cPhotos} alt={t("photoAlt", { name: c.person_name })} small />
+              <PhotoGrid kind="case" photos={cPhotos} alt={t("photoAlt", { name: c.person_name })} small highlight={m.face_pair} />
               <p><strong>{o.full_name}</strong> · {t(`rel_${c.relationship}`)}</p>
               <p><a className="link" href={`tel:${o.phone}`}><Icon name="phone" /> {o.phone}</a>{o.alt_phone && <> · <a className="link" href={`tel:${o.alt_phone}`}>{o.alt_phone}</a></>}</p>
               {o.address && <p className="small muted">{o.address}</p>}
@@ -89,7 +103,7 @@ export default function OfficerMatch() {
             </section>
             <section className="panel">
               <h2>{t("side_found")}</h2>
-              <PhotoGrid kind="record" photos={rPhotos} alt={t("foundPhoto")} small />
+              <PhotoGrid kind="record" photos={rPhotos} alt={t("foundPhoto")} small highlight={m.face_pair} />
               <p><strong>{r.organization || r.found_place}</strong> · {t(`src_${r.source}`)}</p>
               <p><a className="link" href={`tel:${r.contact_phone}`}><Icon name="phone" /> {r.contact_phone}</a> {r.contact_name}</p>
               {r.medical_notes && <p className="small">{t("f_medicalNotes")}: {r.medical_notes}</p>}

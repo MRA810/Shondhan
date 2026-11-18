@@ -31,7 +31,6 @@
 * { box-sizing:border-box; }
 html { -webkit-text-size-adjust:100%; }
 body { margin:0; font-family:"Hind Siliguri",system-ui,sans-serif; font-size:18px; line-height:1.5; color:var(--text); background:var(--bg); min-height:100vh; }
-html[lang="bn"] body, html[lang="bn"] .printsheet { font-family:"Noto Serif Bengali","Hind Siliguri",serif; }
 body::before { content:""; position:fixed; inset:0; z-index:-1;
   background:radial-gradient(60vw 60vw at 15% 10%, color-mix(in srgb,var(--glow1) 70%,transparent), transparent 60%),
              radial-gradient(50vw 50vw at 90% 90%, color-mix(in srgb,var(--glow2) 45%,transparent), transparent 60%), var(--bg); }
@@ -634,3 +633,11 @@ body::before { display:block; content:""; position:fixed; inset:0; z-index:-1; p
 body { background:var(--bg); }
 /* the top bar lets the glow show through a little */
 .navbar { background:color-mix(in srgb,var(--bar) 88%,transparent); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+
+/* face AI */
+.photos li { position: relative; }
+.photos li.facehit .gridphoto { outline: 3px solid var(--accent); outline-offset: 2px; }
+.noface { position: absolute; left: 4px; bottom: 4px; background: var(--bg); color: var(--text); border: 1px solid var(--edge); font-size: .75rem; padding: 1px 6px; border-radius: var(--r); }
+.facepair { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; align-items: center; max-width: 520px; }
+.facepair .gridphoto { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: var(--r); border: 1px solid var(--edge); }
+.facepct { font-size: 1.2rem; color: var(--accent); text-align: center; }

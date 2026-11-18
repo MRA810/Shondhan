@@ -118,6 +118,13 @@ const T = {
   src_police: ["পুলিশ", "Police"], src_medical: ["চিকিৎসা কেন্দ্র", "Medical centre"],
   r_gender: ["লিঙ্গ", "Gender"], r_age: ["বয়স", "Age"], r_height: ["উচ্চতা", "Height"], r_division: ["বিভাগ", "Division"], r_clothing: ["পোশাক ও জিনিস", "Clothing and belongings"],
   r_marks: ["শরীরের চিহ্ন", "Body marks"], r_mute: ["কথা বলতে পারেন না", "Cannot speak"], r_looks: ["চেহারা", "Looks"], r_name: ["নাম", "Name"],
+  r_face: ["ছবিতে চেহারা মিলেছে", "Face in photos"],
+  faceTitle: ["ছবির মিল (AI)", "Photo match (AI)"],
+  faceScore: ["মুখের মিল {n}%", "Faces {n}% alike"],
+  faceHelp: ["AI দুই পক্ষের সবচেয়ে মিল থাকা ছবি জোড়া বেছে নিয়েছে। তথ্য কম থাকলে ছবির মিল বেশি গুরুত্ব পায়। শেষ সিদ্ধান্ত আপনার — নিজের চোখে মিলিয়ে দেখুন।", "The AI picked the most alike pair of photos. When few details were given, the photos count for more. The final decision is yours: compare them yourself."],
+  faceNone: ["ছবি মেলানো যায়নি — এক পক্ষের ছবিতে পরিষ্কার মুখ পাওয়া যায়নি, তাই শুধু তথ্য দিয়ে মেলানো হয়েছে।", "Photos not compared: one side has no clear face, so only the details were used."],
+  noFace: ["মুখ স্পষ্ট নয়", "No clear face"],
+  noFaceWarn: ["কিছু ছবিতে মুখ স্পষ্ট পাওয়া যায়নি। সামনে থেকে তোলা, আলোয় পরিষ্কার একটি মুখের ছবি যোগ করলে খোঁজা সহজ হবে।", "Some photos have no clear face. Adding a clear, front-facing, well-lit face photo makes matching much easier."],
   r_id: ["পরিচয়পত্র নম্বর", "ID number"], r_face: ["মুখের ছবি", "Face"], r_date: ["তারিখ", "Date"],
 
   // ---------- new case form ----------

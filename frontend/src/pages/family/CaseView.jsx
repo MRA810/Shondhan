@@ -39,6 +39,7 @@ export default function CaseView() {
             <p className="muted">{[ageText(t, c), t(`rel_${c.relationship}`) && t("youAre", { rel: t(`rel_${c.relationship}`) })].filter(Boolean).join(" · ")}</p>
             <p className="muted small">{t("postedOn", { date: date(c.created_at) })} · {t("officialViews", { n: c.official_views })}</p>
             <PhotoGrid kind="case" photos={photos} alt={t("photoAlt", { name: c.person_name })} />
+            {photos.some((p) => p.face === "none") && <p className="warn">{t("noFaceWarn")}</p>}
             <PersonFacts p={c} />
             {docs.length > 0 && <><h3>{t("idDocs")}</h3><PhotoGrid kind="case" photos={docs} alt={t("idDocs")} small /></>}
           </section>

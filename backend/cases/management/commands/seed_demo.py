@@ -79,6 +79,10 @@ class Command(BaseCommand):
             found_place="Dhaka Medical College Hospital", found_area="Ward 5", found_at=now - timedelta(days=1),
             contact_name="Dr. Sultana", contact_phone="01700000004")
         RecordPhoto.objects.create(record=medical, image=picture((90, 140, 120), "r2.png"))
+        from cases import faces
+        if faces.ready():  # demo pictures are drawings: no real faces, so they just get "no clear face"
+            for p in list(case.photos.all()) + list(police.photos.all()) + list(medical.photos.all()):
+                faces.process_photo(p)
         for rec in (police, medical):
             run_for_record(rec)
         find_duplicates(medical)

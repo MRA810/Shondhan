@@ -164,7 +164,41 @@ DB_ENGINE=sqlite python manage.py test     # same tests without PostgreSQL
 
 Only pairs scoring **over 50** are stored; families are notified about them straight away (restricted/deceased ones go to the officer queue instead). Police/hospital pairs scoring 60 or more are offered for merging.
 
-**Plugging in the AI pipeline:** `face_similarity(case, record)` currently returns `None`. When InsightFace / OpenCLIP vectors in Qdrant are ready, return a 0–1 similarity there and it is blended into the same score. Nothing else changes.
+### Photo matching (face AI)
+
+Every face photo is checked by a face AI: **OpenCV YuNet** finds the face, **SFace** turns it into 128 numbers.
+Both are free (Apache-2.0), run on a normal laptop CPU (≈50–150 ms per photo), and need ~40 MB of model files.
+`start_server.sh` installs `opencv-python-headless` and downloads the models the first time it runs. To do it by hand:
+
+```bash
+cd backend
+venv/bin/pip install -r requirements.txt
+venv/bin/python manage.py download_face_models     # once
+venv/bin/python manage.py face_check me1.jpg me2.jpg friend.jpg   # test it on your own photos
+venv/bin/python manage.py process_faces            # photos uploaded before the models were installed
+```
+
+**How photos and details are combined.** The program measures how many details *both* sides gave
+(gender, age, height, area, marks, clothing, looks, name = 110 points max): that share is the *coverage*.
+
+| Details both sides gave | Details count | Photos count |
+|---|---|---|
+| Almost all (coverage 100%) | 80% | 20% |
+| About half | 50% | 50% |
+| Almost none (e.g. an unconscious person with only a photo) | 20% | 80% |
+
+`final = (1 − w) × details + w × face%`, with `w = 0.2 + 0.6 × (1 − coverage)`.
+The face % is the best pair among all family photos × all found-person photos (cosine similarity, 50% at OpenCV's
+0.363 "same person" threshold). A small or blurry face pulls the face % towards 50% ("not sure") instead of giving a firm yes or no.
+A gender mismatch or the same ID number still decides on its own. If either side has no clear face, only the details are used.
+Police and hospital duplicates use the same rule.
+
+Faces are found in a background thread right after an upload, then matching runs again, so a family can get a
+"possible match" a few seconds after the police post a photo. The officer's review page shows the face % and the
+two photos the AI paired (outlined); a family sees "No clear face" on photos that could not be used, with a tip to add a better one.
+`python manage.py explain_match <case id>` prints every step, including the photo step. Set `FACE_MATCHING=off` in `.env` to turn it off.
+
+The AI only suggests. A case officer always confirms before a family is told someone was found.
 
 ---
 
@@ -198,7 +232,8 @@ backend/
   cases/
     models.py        MissingCase, CasePhoto, FoundRecord, RecordPhoto, Match, MergeRequest, Notification, AuditLog
     traits.py        shared dropdown vocabulary, mark validation (incl. the 3D point "pos": [x, y, z]) (body regions → places, marks, clothing, colours, traits, ID types)
-    matching.py      scoring, duplicate detection, face_similarity() hook
+    matching.py      scoring (details + photos), duplicate detection
+    faces.py         face AI: find face, 128 numbers, compare, background processing
     services.py      notifications, audit, officer review, reunite, merge
     views.py, urls.py, tests.py
     management/commands/seed_demo.py
@@ -259,6 +294,6 @@ frontend/src/
 
 ## Not built yet (future scope)
 
-- The real face / mark / apparel AI models (the hook is ready).
+- Mark / clothing image AI (faces are done; the same pattern can be used for tattoos and clothes).
 - SMS alerts for new matches (SMS is used only for codes so far; alerts are in-app).
 - Kidnapping workflows.

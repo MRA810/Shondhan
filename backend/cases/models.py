@@ -84,6 +84,10 @@ class CasePhoto(models.Model):
     case = models.ForeignKey(MissingCase, on_delete=models.CASCADE, related_name="photos")
     kind = models.CharField(max_length=10, choices=PhotoKind.choices, default=PhotoKind.PHOTO)
     image = models.ImageField(upload_to=case_photo_path, storage=private_storage)
+    # face AI (see cases/faces.py): the 128 numbers of the face in this photo
+    face_vector = models.JSONField(null=True, blank=True)
+    face_status = models.CharField(max_length=8, default="pending")  # pending / ok / none (no clear face) / off / error
+    face_quality = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -147,6 +151,10 @@ class RecordPhoto(models.Model):
     record = models.ForeignKey(FoundRecord, on_delete=models.CASCADE, related_name="photos")
     kind = models.CharField(max_length=10, choices=PhotoKind.choices, default=PhotoKind.PHOTO)
     image = models.ImageField(upload_to=record_photo_path, storage=private_storage)
+    # face AI (see cases/faces.py): the 128 numbers of the face in this photo
+    face_vector = models.JSONField(null=True, blank=True)
+    face_status = models.CharField(max_length=8, default="pending")  # pending / ok / none (no clear face) / off / error
+    face_quality = models.FloatField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -175,6 +183,8 @@ class Match(models.Model):
     record = models.ForeignKey(FoundRecord, on_delete=models.CASCADE, related_name="matches")
     score = models.PositiveSmallIntegerField()  # 0-100
     reasons = models.JSONField(default=list, blank=True)
+    face_score = models.PositiveSmallIntegerField(null=True, blank=True)  # 0-100, best face pair; null = photos not compared
+    face_pair = models.JSONField(null=True, blank=True)                  # [case photo id, record photo id] of that pair
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     reviewed_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     reviewed_at = models.DateTimeField(null=True, blank=True)

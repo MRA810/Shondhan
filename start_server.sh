@@ -102,7 +102,7 @@ new_group() {
 PY="$BACKEND_DIR/venv/bin/python"
 
 # packages added in later versions (Pillow for photos, three.js for the 3D figure)
-if ! "$PY" -c "import PIL, rest_framework_simplejwt, corsheaders" 2>/dev/null; then
+if ! "$PY" -c "import PIL, rest_framework_simplejwt, corsheaders, cv2, numpy" 2>/dev/null; then
     echo "Installing missing Python packages..."
     "$PY" -m pip install -q -r "$BACKEND_DIR/requirements.txt" || fail "pip install failed."
 fi
@@ -149,6 +149,18 @@ fi
 # ---------- migrations ----------
 echo "[2/4] Applying database migrations..."
 (cd "$BACKEND_DIR" && "$PY" manage.py migrate) || fail "Migrations failed (see above)."
+
+# face AI models (~40 MB, once). Without them matching still works, using the details only.
+if [[ ! -f "$BACKEND_DIR/face_models/face_recognition_sface_2021dec.onnx" ]]; then
+    echo "      Downloading the face matching models (once, ~40 MB)..."
+    (cd "$BACKEND_DIR" && "$PY" manage.py download_face_models) \
+        || echo "      (could not download face models; photos will not be compared until you run: python manage.py download_face_models)"
+fi
+# photos uploaded before the models were there
+(cd "$BACKEND_DIR" && "$PY" manage.py shell -c "
+from cases import faces; from cases.models import CasePhoto, RecordPhoto
+import sys; sys.exit(0 if faces.ready() and (CasePhoto.objects.filter(kind='photo', face_status__in=['pending','off']).exists() or RecordPhoto.objects.filter(kind='photo', face_status__in=['pending','off']).exists()) else 1)" 2>/dev/null) \
+    && { echo "      Checking faces in older photos..."; (cd "$BACKEND_DIR" && "$PY" manage.py process_faces) || true; }
 
 # first run: add the demo accounts so there is something to log in with
 USERS="$(cd "$BACKEND_DIR" && "$PY" manage.py shell -c "from accounts.models import User; print(User.objects.count())" 2>/dev/null | tail -n 1)"

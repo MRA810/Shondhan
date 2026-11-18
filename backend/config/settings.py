@@ -100,6 +100,11 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
+# Face matching (cases/faces.py). FACE_MATCHING=off turns it off. Models live in backend/face_models/.
+FACE_MATCHING = os.getenv("FACE_MATCHING", "on")
+FACE_MODEL_DIR = BASE_DIR / "face_models"
+FACE_ASYNC = os.getenv("FACE_ASYNC", "1") == "1"  # find faces in a background thread after upload
+
 # SMS for phone-number codes (signup, forgot password). See accounts/sms.py.
 SMS_BACKEND = os.getenv("SMS_BACKEND", "console")
 SMS_API_KEY = os.getenv("SMS_API_KEY", "")

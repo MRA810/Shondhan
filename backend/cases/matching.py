@@ -91,63 +91,133 @@ def traits_points(a, b):
     return len(same), keys
 
 
-def face_similarity(case, record):
-    """Hook for the face-vector model. Return 0-1, or None while the model is not installed."""
-    return None
+# ---------- details + photos ----------
+# What every comparable detail is worth when BOTH sides gave it (the trait points below).
+FULL_DETAILS = 110
+FACE_WEIGHT_MIN, FACE_WEIGHT_MAX = 0.20, 0.80
 
 
-def score(case, rec):
-    """Return (0-100, list of matched trait keys) for a family case against a found record."""
+def face_weight(coverage):
+    """How much the photos count. coverage = share of details both sides actually gave (0-1).
+    Plenty of details -> the details decide (photos 20%). Few details -> the photos decide (up to 80%)."""
+    w = FACE_WEIGHT_MIN + (FACE_WEIGHT_MAX - FACE_WEIGHT_MIN) * (1 - coverage)
+    return max(FACE_WEIGHT_MIN, min(FACE_WEIGHT_MAX, w))
+
+
+def blend(trait_pts, coverage, face_prob):
+    w = face_weight(coverage)
+    return (1 - w) * trait_pts + w * 100 * face_prob, w
+
+
+def face_similarity(a, b):
+    """Best face pair between the two people's photos (cases/faces.py), or None if either side has no usable face."""
+    from . import faces
+    if not faces.enabled():
+        return None
+    return faces.best_pair(a, b)
+
+
+def score(case, rec, explain=None, detail=None):
+    """Return (0-100, list of matched trait keys) for a family case against a found record.
+    Pass a list as `explain` to get every step back as (what, points, note) for `manage.py explain_match`."""
+    log = (lambda what, pts, note="": explain.append((what, pts, note))) if explain is not None else (lambda *a: None)
     if case.gender in ("male", "female") and rec.gender in ("male", "female") and case.gender != rec.gender:
+        log("gender", 0, f"different gender ({case.gender} / {rec.gender}): score is 0")
         return 0, []
-    pts, why = 0.0, []
+    pts, why, avail = 0.0, [], 0
 
     if case.id_number and _norm_id(case.id_number) == _norm_id(rec.id_number):
+        log("id", 97, "same ID number")
         return 97, ["id"]
+    both = lambda x, y: bool(x) and bool(y)
+    avail += 12 if (case.gender in ("male", "female") and rec.gender in ("male", "female")) else 0
+    avail += 18 if (case.person_age is not None and rec.age_min is not None and rec.age_max is not None) else 0
+    avail += 4 if both(case.height_cm, rec.height_cm) else 0
+    avail += 8 if both(case.division, rec.division) else 0
+    avail += 26 if both(case.marks, rec.marks) else 0
+    avail += 20 if both(case.clothing or case.belongings, rec.clothing or rec.belongings) else 0
+    avail += 3 * len([k for k in (case.traits or {}) if (rec.traits or {}).get(k)])
+    avail += 10 if rec.name_hint else 0
 
     if case.gender in ("male", "female") and case.gender == rec.gender:
         pts += 12
         why.append("gender")
+        log("gender", 12)
+    else:
+        log("gender", 0, f"not compared (family: {case.gender or '-'}, record: {rec.gender or '-'})")
     if case.person_age is not None and rec.age_min is not None and rec.age_max is not None:
         if rec.age_min - 3 <= case.person_age <= rec.age_max + 3:
             pts += 18
             why.append("age")
+            log("age", 18, f"{case.person_age} within {rec.age_min}-{rec.age_max} (+-3)")
         elif abs(case.person_age - (rec.age_min + rec.age_max) / 2) > 15:
             pts -= 10
+            log("age", -10, f"{case.person_age} far from {rec.age_min}-{rec.age_max}")
+        else:
+            log("age", 0, f"{case.person_age} outside {rec.age_min}-{rec.age_max}")
+    else:
+        log("age", 0, "missing on one side")
     if case.height_cm and rec.height_cm and abs(case.height_cm - rec.height_cm) <= 8:
         pts += 4
         why.append("height")
+        log("height", 4)
+    else:
+        log("height", 0, "missing or more than 8 cm apart")
     if case.division and case.division == rec.division:
         pts += 8
         why.append("division")
+        log("division", 8)
+    else:
+        log("division", 0, f"{case.division or '-'} / {rec.division or '-'}")
 
     m = marks_similarity(case.marks, rec.marks)
     if m >= 0.25:
         pts += round(26 * m)
         why.append("marks")
+        log("marks", round(26 * m), f"similarity {m:.2f}")
+    else:
+        log("marks", 0, f"family {len(case.marks or [])} mark(s), record {len(rec.marks or [])}; no close pair")
     c = clothing_similarity(case.clothing, rec.clothing)
     b = _overlap(case.belongings, rec.belongings)
     if c >= 0.3 or b >= 0.3:
         pts += round(14 * c + 6 * b)
         why.append("clothing")
-    same, _ = traits_points(case.traits, rec.traits)
+        log("clothing", round(14 * c + 6 * b), f"items {c:.2f}, belongings {b:.2f}")
+    else:
+        log("clothing", 0, "missing or different")
+    same, keys = traits_points(case.traits, rec.traits)
     if same:
         pts += 3 * same
         why.append("looks")
+    log("looks", 3 * same, f"{same} of {len(keys)} shared traits the same" if keys else "missing on one side")
     if rec.name_hint and _overlap(case.person_name, rec.name_hint) >= 0.5:
         pts += 10
         why.append("name")
+        log("name", 10, rec.name_hint)
     if case.cannot_speak and rec.condition == FoundRecord.Condition.MUTE:
         pts += 5
         why.append("mute")
+        log("mute", 5)
     if case.last_seen_at and rec.found_at and rec.found_at < case.last_seen_at - timedelta(days=1):
         pts -= 20  # found before they went missing: very unlikely
+        log("dates", -20, "found before the last-seen date")
 
+    coverage = min(1.0, avail / FULL_DETAILS)
     face = face_similarity(case, rec)
     if face is not None:
-        pts = 0.5 * pts + 50 * face
-        if face >= 0.6:
+        trait_pts = pts
+        pts, w = blend(trait_pts, coverage, face["prob"])
+        if face["prob"] >= 0.6:
             why.append("face")
+        log("details", round(trait_pts), f"details give {round(trait_pts)} pts; both sides gave {round(coverage * 100)}% of the details")
+        log("face", None, f"photos {round(face['prob'] * 100)}% alike (cosine {face['cos']}), counted {round(w * 100)}%"
+                          f" -> total {round(pts)}%")
+        if detail is not None:
+            detail.update(face_score=round(face["prob"] * 100), face_pair=face["pair"])
+    else:
+        log("face", 0, "photos not compared (no clear face on one side, or face models not installed)")
+        if detail is not None:
+            detail.update(face_score=None, face_pair=None)
     return max(0, min(round(pts), 100)), why
 
 
@@ -185,6 +255,18 @@ def record_similarity(a, b):
     if a.name_hint and b.name_hint and _overlap(a.name_hint, b.name_hint) >= 0.5:
         pts += 10
         why.append("name")
+    # details both records gave (division and date are always there)
+    avail = 18 + (10 if a.gender in ("male", "female") and b.gender in ("male", "female") else 0)
+    avail += 15 if None not in (a.age_min, a.age_max, b.age_min, b.age_max) else 0
+    avail += 25 if (a.marks and b.marks) else 0
+    avail += 20 if ((a.clothing or a.belongings) and (b.clothing or b.belongings)) else 0
+    avail += 3 * len([k for k in (a.traits or {}) if (b.traits or {}).get(k)])
+    avail += 10 if (a.name_hint and b.name_hint) else 0
+    face = face_similarity(a, b)
+    if face is not None:
+        pts, _ = blend(pts, min(1.0, avail / FULL_DETAILS), face["prob"])
+        if face["prob"] >= 0.6:
+            why.append("face")
     return max(0, min(round(pts), 100)), why
 
 
@@ -192,22 +274,25 @@ def record_similarity(a, b):
 
 def _upsert(case, rec):
     """Store / refresh one pair. Returns (match, created)."""
-    s, why = score(case, rec)
+    detail = {}
+    s, why = score(case, rec, detail=detail)
     existing = Match.objects.filter(case=case, record=rec).first()
     if s < THRESHOLD:
         if existing and existing.status == Match.Status.PENDING:
             existing.delete()
         return None, False
     if existing:
-        if existing.score != s or existing.reasons != why:
+        if existing.score != s or existing.reasons != why or existing.face_score != detail.get("face_score"):
             existing.score, existing.reasons = s, why
-            existing.save(update_fields=["score", "reasons"])
+            existing.face_score, existing.face_pair = detail.get("face_score"), detail.get("face_pair")
+            existing.save(update_fields=["score", "reasons", "face_score", "face_pair"])
         return existing, False
-    return Match.objects.create(case=case, record=rec, score=s, reasons=why), True
+    return Match.objects.create(case=case, record=rec, score=s, reasons=why,
+                                face_score=detail.get("face_score"), face_pair=detail.get("face_pair")), True
 
 
 def _candidates_for_case(case):
-    qs = FoundRecord.objects.filter(is_active=True)
+    qs = FoundRecord.objects.filter(is_active=True).prefetch_related("photos")
     if case.gender in ("male", "female"):
         qs = qs.filter(gender__in=[case.gender, "unknown", "other"])
     return qs
@@ -225,7 +310,7 @@ def run_for_record(rec):
     from .services import notify_new_match
     if not rec.is_active:
         return
-    qs = MissingCase.objects.select_related("owner")
+    qs = MissingCase.objects.select_related("owner").prefetch_related("photos")
     if rec.gender in ("male", "female"):
         qs = qs.filter(gender__in=[rec.gender, "other", "unknown"])
     for case in qs:

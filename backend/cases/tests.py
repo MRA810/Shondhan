@@ -385,7 +385,7 @@ class ThresholdTests(Base):
         self.assertGreater(m.score, 50)
         # pretend the engine now scores this pair 50%: the match disappears for everyone
         orig = matching.score
-        matching.score = lambda c, r: (50, ["gender"])
+        matching.score = lambda c, r, **k: (50, ["gender"])
         try:
             matching.run_for_record(rec)
         finally:
@@ -471,3 +471,117 @@ class ReportSearchTests(Base):
         cid = MissingCase.objects.get(person_name="Shila Akter").id
         photo = CasePhoto.objects.filter(case_id=cid).first()
         self.assertEqual(self.m.get(f"/api/photos/case/{photo.id}/").status_code, 404)
+
+
+# ---------------- face matching ----------------
+from unittest import mock
+
+from django.core.management import call_command
+
+from . import faces as face_ai
+from .matching import face_weight, run_for_record
+
+SAME = [1.0] + [0.0] * 127          # stand-ins for the 128 face numbers (unit length)
+OTHER = [0.0, 1.0] + [0.0] * 126     # cosine 0 with SAME: clearly a different face
+SPARSE_CASE = dict(person_age="", division="", marks="[]", clothing="[]", traits="{}")
+SPARSE_RECORD = dict(age_min="", age_max="", marks="[]", clothing="[]", traits="{}", condition="unconscious")
+
+
+def set_face(photos, vec):
+    photos.filter(kind="photo").update(face_vector=vec, face_status="ok", face_quality=1.0)
+
+
+class FaceWeightTests(APITestCase):
+    def test_details_decide_when_plenty_photos_when_few(self):
+        self.assertAlmostEqual(face_weight(1.0), 0.2)
+        self.assertAlmostEqual(face_weight(0.0), 0.8)
+        self.assertGreater(face_weight(0.1), face_weight(0.9))
+
+    def test_calibration(self):
+        self.assertAlmostEqual(face_ai.calibrate(face_ai.SAME_PERSON_COSINE), 0.5)
+        self.assertGreater(face_ai.calibrate(0.6), 0.95)
+        self.assertLess(face_ai.calibrate(0.1), 0.01)
+
+
+@override_settings(FACE_MATCHING="on", FACE_ASYNC=False)
+class FaceMatchingTests(Base):
+    def sparse_pair(self, case_vec, rec_vec):
+        cid = self.post_case(**SPARSE_CASE).json()["id"]
+        rid = self.post_record(**SPARSE_RECORD).json()["id"]
+        self.assertFalse(Match.objects.exists())  # gender alone is far below 50%
+        set_face(CasePhoto.objects.filter(case_id=cid), case_vec)
+        set_face(RecordPhoto.objects.filter(record_id=rid), rec_vec)
+        run_for_record(FoundRecord.objects.get(pk=rid))
+        return cid, rid
+
+    def test_few_details_same_face_matches_and_family_is_told(self):
+        cid, rid = self.sparse_pair(SAME, SAME)
+        m = Match.objects.get(case_id=cid, record_id=rid)
+        self.assertGreater(m.score, 50)
+        self.assertIn("face", m.reasons)
+        self.assertEqual(m.face_score, 100)
+        self.assertEqual(len(m.face_pair), 2)
+        self.assertEqual(Notification.objects.filter(user=self.fam, kind="match", match=m).count(), 1)
+        d = self.o.get(f"/api/officer/matches/{m.id}/").json()  # the officer sees which photos matched
+        self.assertEqual((d["face_score"], d["face_pair"]), (100, m.face_pair))
+
+    def test_few_details_different_face_no_match(self):
+        self.sparse_pair(SAME, OTHER)
+        self.assertFalse(Match.objects.exists())
+
+    def test_plenty_of_details_still_decide(self):
+        cid = self.post_case().json()["id"]      # full details on both sides
+        rid = self.post_record().json()["id"]
+        before = Match.objects.get().score
+        set_face(CasePhoto.objects.filter(case_id=cid), SAME)
+        set_face(RecordPhoto.objects.filter(record_id=rid), OTHER)  # photos say "different"
+        run_for_record(FoundRecord.objects.get(pk=rid))
+        m = Match.objects.get()
+        self.assertGreater(m.score, 50)           # details still carry it (photos count only ~20-30%)
+        self.assertLess(m.score, before)          # but the photos pull it down
+        self.assertEqual(m.face_score, 0)
+
+    def test_no_usable_face_falls_back_to_details(self):
+        cid = self.post_case().json()["id"]
+        self.post_record()
+        before = Match.objects.get().score
+        CasePhoto.objects.filter(case_id=cid).update(face_status="none")
+        run_for_record(FoundRecord.objects.get())
+        m = Match.objects.get()
+        self.assertEqual((m.score, m.face_score), (before, None))
+
+    def test_upload_finds_faces_then_matches(self):
+        """The real flow: upload -> faces found (model stood in) -> matching runs again."""
+        with mock.patch.object(face_ai, "ready", return_value=True), \
+             mock.patch.object(face_ai, "embed_image", return_value={"vector": SAME, "quality": 0.9}):
+            cid = self.post_case(**SPARSE_CASE).json()["id"]
+            self.assertEqual(set(CasePhoto.objects.filter(case_id=cid).values_list("face_status", flat=True)), {"ok"})
+            self.post_record(**SPARSE_RECORD)
+        m = Match.objects.get()
+        self.assertIn("face", m.reasons)
+        self.assertEqual(Notification.objects.filter(user=self.fam, kind="match").count(), 1)
+
+    def test_photo_without_face_is_reported_to_the_family(self):
+        with mock.patch.object(face_ai, "ready", return_value=True), \
+             mock.patch.object(face_ai, "embed_image", return_value=None):
+            cid = self.post_case().json()["id"]
+        photos = self.f.get(f"/api/family/cases/{cid}/").json()["photos"]
+        self.assertEqual({p["face"] for p in photos if p["kind"] == "photo"}, {"none"})
+
+    def test_police_and_hospital_duplicates_use_photos(self):
+        a = self.post_record(**SPARSE_RECORD).json()["id"]
+        b = self.post_record(client=self.m, contact_phone="01744444444", photos=[img("m.png")], **SPARSE_RECORD).json()["id"]
+        MergeRequest.objects.all().delete()
+        set_face(RecordPhoto.objects.filter(record_id=a), SAME)
+        set_face(RecordPhoto.objects.filter(record_id=b), SAME)
+        from .matching import find_duplicates
+        find_duplicates(FoundRecord.objects.get(pk=b))
+        mr = MergeRequest.objects.get()
+        self.assertIn("face", mr.reasons)
+
+    def test_explain_command_shows_photo_step(self):
+        cid, rid = self.sparse_pair(SAME, SAME)
+        out = io.StringIO()
+        call_command("explain_match", cid, record=rid, stdout=out)
+        self.assertIn("photos 100% alike", out.getvalue())
+        self.assertIn("MATCH", out.getvalue())
