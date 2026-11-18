@@ -1,58 +1,59 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { login, setToken } from "../api.js";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { login } from "../api.js";
 import { usePrefs } from "../prefs.jsx";
-import Toggles from "./Toggles.jsx";
+import { HOME } from "../session.jsx";
+import AuthShell from "./AuthShell.jsx";
 
 export default function Login() {
   const { t } = usePrefs();
   const nav = useNavigate();
-  const [id, setId] = useState("");
+  const [params] = useSearchParams();
+  const as = ["police", "medical", "staff"].includes(params.get("as")) ? params.get("as") : "";
+  const [ident, setIdent] = useState("");
   const [pw, setPw] = useState("");
   const [show, setShow] = useState(false);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function onSubmit(e) {
+  const submit = async (e) => {
     e.preventDefault();
-    if (!id.trim() || !pw) return setErr("required");
+    if (!ident.trim() || !pw) return setErr("required");
     setBusy(true); setErr("");
     try {
-      const data = await login(id.trim(), pw);
-      setToken(data.access);
-      nav("/dashboard");
+      const d = await login(ident.trim(), pw);
+      nav(HOME[d.user.role] || "/", { replace: true });
     } catch (x) {
-      setErr(x.code || "network");
-    } finally {
-      setBusy(false);
-    }
-  }
+      setErr(["invalid", "locked", "pending"].includes(x.code) ? x.code : "network");
+    } finally { setBusy(false); }
+  };
 
   return (
-    <main className="page">
-      <Toggles />
-      <section className="split">
-        <div className="intro">
-          <h1 className="brand">{t("brand")}</h1>
-          <p className="tagline">{t("tagline")}</p>
+    <AuthShell>
+      <form className="glass" onSubmit={submit} noValidate>
+        <h2>{as ? t(`login_${as}`) : t("loginTitle")}</h2>
+        {as && <p className="note">{t("login_staffHint")}</p>}
+        <label htmlFor="ident">{t("id")}</label>
+        <input id="ident" autoComplete="username" inputMode="email" placeholder={t("idHint")} value={ident} onChange={(e) => setIdent(e.target.value)} />
+        <label htmlFor="pw">{t("pw")}</label>
+        <div className="pwrow">
+          <input id="pw" type={show ? "text" : "password"} autoComplete="current-password" value={pw} onChange={(e) => setPw(e.target.value)} />
+          <button type="button" className="chip" onClick={() => setShow(!show)} aria-pressed={show}>{show ? t("hide") : t("show")}</button>
         </div>
-        <form className="glass" onSubmit={onSubmit} noValidate>
-          <h2>{t("loginTitle")}</h2>
-          <label htmlFor="id">{t("id")}</label>
-          <input id="id" value={id} onChange={(e) => setId(e.target.value)} placeholder={t("idHint")}
-                 autoComplete="username" inputMode="email" />
-          <label htmlFor="pw">{t("pw")}</label>
-          <div className="pwrow">
-            <input id="pw" type={show ? "text" : "password"} value={pw}
-                   onChange={(e) => setPw(e.target.value)} autoComplete="current-password" />
-            <button type="button" className="chip" onClick={() => setShow(!show)}>{show ? t("hide") : t("show")}</button>
-          </div>
-          {err && <p className="error" role="alert">{t(err)}</p>}
-          <button className="primary" disabled={busy}>{busy ? t("loading") : t("submit")}</button>
-          <p className="note">{t("noAccount")} <Link to="/signup">{t("signup")}</Link></p>
-          <p className="note">{t("staffNote")}</p>
-        </form>
-      </section>
-    </main>
+        <p className="note right"><Link to="/forgot">{t("forgotQ")}</Link></p>
+        {err && <p className="error" role="alert">{t(err)}</p>}
+        <button className="primary" disabled={busy}>{busy ? t("loading") : t("submit")}</button>
+        {as ? (
+          as === "staff" ? <p className="note">{t("au_staffNote")}</p>
+            : <p className="note">{t("login_noStaff")} <Link to={`/signup/staff?role=${as}`}>{t("wl_staffApply")}</Link></p>
+        ) : (
+          <>
+            <p className="note">{t("noAccount")} <Link to="/report">{t("reportBtn")}</Link></p>
+            <p className="note">{t("staffQ")} <Link to="/authority">{t("au_title")}</Link></p>
+          </>
+        )}
+        <p className="note">{as ? <Link to="/authority">← {t("au_title")}</Link> : <Link to="/">← {t("backHome")}</Link>}</p>
+      </form>
+    </AuthShell>
   );
 }

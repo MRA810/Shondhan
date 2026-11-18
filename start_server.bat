@@ -1,4 +1,3 @@
-
 @echo off
 setlocal EnableExtensions
 title Shondhan Server Launcher

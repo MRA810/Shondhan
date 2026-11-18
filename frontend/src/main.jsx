@@ -4,6 +4,9 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { Prefs } from "./prefs.jsx";
 import "./styles.css";
+
 createRoot(document.getElementById("root")).render(
-  <BrowserRouter><Prefs><App /></Prefs></BrowserRouter>
+  <React.StrictMode>
+    <BrowserRouter><Prefs><App /></Prefs></BrowserRouter>
+  </React.StrictMode>
 );

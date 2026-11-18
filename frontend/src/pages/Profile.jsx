@@ -1,95 +1,78 @@
 import { useState } from "react";
 import { updateProfile } from "../api.js";
+import { serverErrors, validPhone } from "../hooks.js";
 import { usePrefs } from "../prefs.jsx";
 import { useSession } from "../session.jsx";
-
-const RELS = ["parent", "spouse", "child", "sibling", "relative", "friend", "other"];
-const DIVS = ["dhaka", "chattogram", "rajshahi", "khulna", "barishal", "sylhet", "rangpur", "mymensingh"];
-const BN = "০১২৩৪৫৬৭৮৯";
-const norm = (s) => s.replace(/[০-৯]/g, (d) => BN.indexOf(d));
+import { DIVISIONS, RELATIONS } from "../traits.js";
+import { Field, Select } from "../components/TraitInputs.jsx";
 
 export default function Profile() {
-  const { t, num } = usePrefs();
-  const { user, setUser, reload } = useSession();
+  const { t } = usePrefs();
+  const { user, setUser } = useSession();
+  const family = user.role === "family";
   const [f, setF] = useState({
     full_name: user.full_name || "", email: user.email || "", age: user.age ?? "", relationship: user.relationship || "",
-    alt_phone: user.alt_phone || "", division: user.division || "", address: user.address || "",
+    alt_phone: user.alt_phone || "", division: user.division || "", address: user.address || "", designation: user.designation || "",
   });
-  const [err, setErr] = useState("");
-  const [ok, setOk] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => { setOk(false); setF({ ...f, [k]: e.target.value }); };
+  const [err, setErr] = useState({});
+  const [state, setState] = useState("");
+  const set = (k) => (e) => { setF({ ...f, [k]: e.target.value }); setState(""); };
 
-  function check() {
-    if (!f.full_name.trim()) return "e_name";
-    if (f.email && !/^\S+@\S+\.\S+$/.test(f.email)) return "e_email";
-    const age = parseInt(norm(String(f.age)), 10);
-    if (!age || age < 18) return "e_age";
-    if (!f.relationship) return "e_rel";
-    if (f.alt_phone && !/^01\d{9}$/.test(norm(f.alt_phone.trim()))) return "e_phone";
-    return "";
-  }
-
-  function serverError(fields = {}) {
-    const m = (k) => (fields[k] || []).join(" ");
-    if (m("email")) return m("email").includes("exists") ? "emailExists" : "e_email";
-    if (m("age")) return "e_age";
-    if (m("alt_phone")) return "e_phone";
-    if (m("full_name")) return "e_name";
-    return "network";
-  }
-
-  async function submit(e) {
+  const save = async (e) => {
     e.preventDefault();
-    const x = check(); setErr(x); setOk(false); if (x) return;
-    setBusy(true);
+    const x = {};
+    if (!f.full_name.trim()) x.full_name = "e_name";
+    if (f.alt_phone && !validPhone(f.alt_phone)) x.alt_phone = "e_phone";
+    if (f.email && !/^\S+@\S+\.\S+$/.test(f.email)) x.email = "e_email";
+    if (family && (Number(f.age) < 18 || Number(f.age) > 120)) x.age = "e_age";
+    setErr(x);
+    if (Object.keys(x).length) return;
+    setState("busy");
+    const body = { full_name: f.full_name, email: f.email, alt_phone: f.alt_phone, division: f.division, address: f.address };
+    if (family) Object.assign(body, { age: Number(f.age), relationship: f.relationship });
+    else body.designation = f.designation;
     try {
-      const saved = await updateProfile({
-        full_name: f.full_name.trim(), email: f.email.trim(), age: parseInt(norm(String(f.age)), 10),
-        relationship: f.relationship, alt_phone: norm(f.alt_phone.trim()), division: f.division, address: f.address.trim(),
-      });
-      setUser(saved); reload(); setOk(true);
-      setF((p) => ({ ...p, alt_phone: saved.alt_phone, address: saved.address }));  // show what the server stored
-    } catch (x) {
-      setErr(x.code === "validation" ? serverError(x.fields) : "network");
-    } finally { setBusy(false); }
-  }
+      setUser(await updateProfile(body));
+      setState("saved");
+    } catch (x2) {
+      if (x2.code === "validation") {
+        const se = serverErrors(x2.fields);
+        if (se.email === "err_exists") se.email = "emailExists";
+        setErr(se);
+      }
+      setState(x2.code === "validation" ? "" : "error");
+    }
+  };
 
   return (
-    <>
-      <div className="sec"><h1>{t("profileTitle")}</h1></div>
-      <form className="panel formwide" onSubmit={submit} noValidate>
-        <h2>{t("step1")}</h2>
-        <label htmlFor="pn">{t("fullName")}</label>
-        <input id="pn" value={f.full_name} onChange={set("full_name")} autoComplete="name" />
-        <label htmlFor="pp">{t("phone")}</label>
-        <input id="pp" value={num(user.phone || "")} disabled aria-describedby="pph" />
-        <p className="note" id="pph">{t("fixedPhone")}</p>
-        <label htmlFor="pe">{t("email")}</label>
-        <input id="pe" value={f.email} onChange={set("email")} inputMode="email" autoComplete="email" />
-        <label htmlFor="pa">{t("age")}</label>
-        <input id="pa" value={f.age} onChange={set("age")} inputMode="numeric" />
-        <label htmlFor="pr">{t("relation")}</label>
-        <select id="pr" value={f.relationship} onChange={set("relationship")}>
-          <option value="">{t("choose")}</option>
-          {RELS.map((r) => <option key={r} value={r}>{t("rel_" + r)}</option>)}
-        </select>
-
-        <h2 className="gap">{t("contactInfo")}</h2>
-        <label htmlFor="pap">{t("altPhone")}</label>
-        <input id="pap" value={f.alt_phone} onChange={set("alt_phone")} placeholder={t("idHint")} inputMode="tel" autoComplete="tel" />
-        <label htmlFor="pd">{t("division")}</label>
-        <select id="pd" value={f.division} onChange={set("division")}>
-          <option value="">{t("choose")}</option>
-          {DIVS.map((d) => <option key={d} value={d}>{t("div_" + d)}</option>)}
-        </select>
-        <label htmlFor="pad">{t("address")}</label>
-        <input id="pad" value={f.address} onChange={set("address")} autoComplete="street-address" />
-
-        {err && <p className="error" role="alert">{t(err)}</p>}
-        {ok && <p className="success" role="status">{t("saved")}</p>}
-        <button className="primary" disabled={busy}>{busy ? t("loading") : t("save")}</button>
-      </form>
-    </>
+    <form className="panel formwide" onSubmit={save} noValidate>
+      <h1>{t("profileTitle")}</h1>
+      <label htmlFor="pphone">{t("phone")}</label>
+      <input id="pphone" value={user.phone || ""} disabled aria-describedby="pphone-hint" />
+      <p className="hint" id="pphone-hint">{t("fixedPhone")}</p>
+      {!family && (
+        <>
+          <label htmlFor="porg">{t("s_organization")}</label>
+          <input id="porg" value={user.organization || ""} disabled />
+        </>
+      )}
+      <Field id="full_name" label={t("fullName")} error={err.full_name}><input id="full_name" value={f.full_name} onChange={set("full_name")} /></Field>
+      <Field id="email" label={t("email")} error={err.email}><input id="email" type="email" value={f.email} onChange={set("email")} /></Field>
+      {family ? (
+        <div className="grid2">
+          <div><Field id="age" label={t("age")} error={err.age}><input id="age" inputMode="numeric" value={f.age} onChange={set("age")} /></Field></div>
+          <div><Select id="rel" label={t("relationDefault")} value={f.relationship} onChange={(v) => setF({ ...f, relationship: v })} options={RELATIONS} prefix="rel_" /></div>
+        </div>
+      ) : (
+        <Field id="designation" label={t("s_designation")}><input id="designation" value={f.designation} onChange={set("designation")} /></Field>
+      )}
+      <h2 className="gap">{t("contactInfo")}</h2>
+      <Field id="alt_phone" label={t("altPhone")} error={err.alt_phone}><input id="alt_phone" inputMode="tel" value={f.alt_phone} onChange={set("alt_phone")} /></Field>
+      <Select id="division" label={t("divisionOpt")} value={f.division} onChange={(v) => { setF({ ...f, division: v }); setState(""); }} options={DIVISIONS} prefix="div_" />
+      <Field id="address" label={t("address")}><textarea id="address" rows={2} maxLength={200} value={f.address} onChange={set("address")} /></Field>
+      {state === "saved" && <p className="success" role="status">{t("saved")}</p>}
+      {state === "error" && <p className="error" role="alert">{t("network")}</p>}
+      <button className="primary" disabled={state === "busy"}>{state === "busy" ? t("loading") : t("save")}</button>
+    </form>
   );
 }
