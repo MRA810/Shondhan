@@ -1,38 +1,92 @@
+"""python manage.py seed_demo  -> one demo account per role plus a few sample posts, for trying the app."""
+import io
 from datetime import timedelta
 
-from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand, CommandError
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management.base import BaseCommand
 from django.utils import timezone
+from PIL import Image, ImageDraw
 
-from cases.models import Case, Match
-from cases.services import notify_match
+from accounts.models import User
+from cases.matching import find_duplicates, run_for_case, run_for_record
+from cases.models import CasePhoto, FoundRecord, MissingCase, RecordPhoto
+
+PASSWORD = "Shondhan@2026"
+ACCOUNTS = [
+    ("01700000001", "admin", "Admin Rahman", ""),
+    ("01700000002", "officer", "Officer Nasrin", "Case Desk, Dhaka"),
+    ("01700000003", "police", "SI Karim", "Mirpur Model Thana"),
+    ("01700000004", "medical", "Dr. Sultana", "Dhaka Medical College Hospital"),
+    ("01700000005", "auditor", "Auditor Hasan", ""),
+    ("01700000006", "family", "Ayesha Begum", ""),
+]
+
+
+def picture(color, name):
+    img = Image.new("RGB", (320, 320), color)
+    d = ImageDraw.Draw(img)
+    d.ellipse((100, 50, 220, 170), fill=(235, 200, 170))
+    d.rectangle((80, 180, 240, 320), fill=tuple(max(0, c - 60) for c in color))
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return SimpleUploadedFile(name, buf.getvalue(), content_type="image/png")
 
 
 class Command(BaseCommand):
-    help = "DEV ONLY: add sample cases, matches and notifications to a family account (by phone)."
-
-    def add_arguments(self, parser):
-        parser.add_argument("phone")
+    help = "Create demo users for every role and sample posts (development only)."
 
     def handle(self, *args, **opts):
-        User = get_user_model()
-        user = User.objects.filter(phone=opts["phone"], role="family").first()
-        if not user:
-            raise CommandError("No family user with that phone.")
-        if user.cases.exists():
-            raise CommandError("This user already has cases; refusing to add demo data.")
+        users = {}
+        for phone, role, name, org in ACCOUNTS:
+            u, created = User.objects.get_or_create(username=phone, defaults=dict(
+                phone=phone, role=role, first_name=name, organization=org, age=40 if role == "family" else None,
+                relationship="parent" if role == "family" else "", approved_at=timezone.now(),
+                is_staff=role == "admin", is_superuser=role == "admin"))
+            if created:
+                u.set_password(PASSWORD)
+                u.save()
+            users[role] = u
+        if MissingCase.objects.filter(owner=users["family"]).exists():
+            self.stdout.write("Demo data already exists.")
+            return self._print()
+
         now = timezone.now()
-        a = Case.objects.create(owner=user, person_name="Rahim Uddin", person_age=62, relationship="parent",
-                                last_seen_place="Mirpur 10, Dhaka", last_seen_at=now - timedelta(days=3))
-        b = Case.objects.create(owner=user, person_name="Sumaiya Akter", person_age=17, relationship="sibling",
-                                last_seen_place="Chattogram railway station", last_seen_at=now - timedelta(days=9))
-        Case.objects.create(owner=user, person_name="Karim Mia", person_age=45, relationship="relative",
-                            last_seen_place="Sylhet bus stand", last_seen_at=now - timedelta(days=1))
-        m1 = Match.objects.create(case=a, score=91, found_place="Dhaka Medical College Hospital", found_area="Shahbag, Dhaka",
-                                  found_at=now - timedelta(hours=20), contact_phone="01700000001", verified=True)
-        m2 = Match.objects.create(case=a, score=68, found_place="Mirpur Model Police Station", found_area="Mirpur, Dhaka",
-                                  found_at=now - timedelta(days=1), contact_phone="01700000002")
-        m3 = Match.objects.create(case=b, score=88, record_kind=Match.Kind.DECEASED)
-        for m in (m2, m3, m1):  # m1 last, so the banner shows the strongest living match
-            notify_match(m)
-        self.stdout.write(self.style.SUCCESS(f"Demo data added for {user.phone}"))
+        case = MissingCase.objects.create(
+            owner=users["family"], relationship="parent", person_name="Rahim Uddin", person_age=62, gender="male",
+            height_cm=165, division="dhaka", last_seen_place="Mirpur 10 bus stand", last_seen_at=now - timedelta(days=4),
+            traits={"skin": "brown", "build": "thin", "hair": "grey"},
+            clothing=[{"item": "panjabi", "color": "white"}, {"item": "lungi", "color": "blue"}],
+            belongings="black umbrella, reading glasses", cannot_speak=False,
+            marks=[{"region": "left_arm", "part": "forearm", "type": "scar", "detail": "old burn scar", "pos": [0.335, 1.02, 0.02]},
+                   {"region": "face", "part": "right_cheek", "type": "mole", "detail": "", "pos": [-0.066, 1.632, 0.09]}])
+        for i in range(3):
+            CasePhoto.objects.create(case=case, image=picture((120 + i * 30, 90, 60), f"c{i}.png"))
+
+        police = FoundRecord.objects.create(
+            reporter=users["police"], source="police", condition="mute", gender="male", age_min=55, age_max=70,
+            height_cm=163, traits={"skin": "brown", "build": "thin", "hair": "grey"},
+            clothing=[{"item": "panjabi", "color": "white"}], belongings="umbrella",
+            marks=[{"region": "left_arm", "part": "forearm", "type": "scar", "detail": "", "pos": [0.338, 1.0, 0.025]}],
+            division="dhaka", found_place="Mirpur Model Thana", found_area="Mirpur 1", found_at=now - timedelta(days=2),
+            contact_name="SI Karim", contact_phone="01700000003")
+        RecordPhoto.objects.create(record=police, image=picture((80, 110, 160), "r1.png"))
+        medical = FoundRecord.objects.create(
+            reporter=users["medical"], source="medical", condition="mute", gender="male", age_min=58, age_max=68,
+            traits={"skin": "brown", "hair": "grey"}, clothing=[{"item": "panjabi", "color": "white"}],
+            marks=[{"region": "left_arm", "part": "forearm", "type": "scar", "detail": "healed", "pos": [0.33, 1.04, 0.03]},
+                   {"region": "right_leg", "part": "knee", "type": "wound", "detail": "fresh graze", "pos": [-0.1, 0.5, 0.06]}],
+            medical_notes="Dehydrated, stable. Ward 5.", division="dhaka",
+            found_place="Dhaka Medical College Hospital", found_area="Ward 5", found_at=now - timedelta(days=1),
+            contact_name="Dr. Sultana", contact_phone="01700000004")
+        RecordPhoto.objects.create(record=medical, image=picture((90, 140, 120), "r2.png"))
+        for rec in (police, medical):
+            run_for_record(rec)
+        find_duplicates(medical)
+        run_for_case(case)
+        self.stdout.write(self.style.SUCCESS("Demo data created."))
+        self._print()
+
+    def _print(self):
+        self.stdout.write(f"Password for every demo account: {PASSWORD}")
+        for phone, role, name, _ in ACCOUNTS:
+            self.stdout.write(f"  {role:8} {phone}  {name}")

@@ -1,386 +1,264 @@
 # 🔍 Shondhan (সন্ধান)
 
-An AI-powered web application designed to bridge the gap between missing persons and their searching families.
+A web app that connects **families searching for a missing person** with **police stations and hospitals that are caring for unidentified people**. Both sides describe the person using the same dropdown lists, the system suggests matches with a percentage score, and a **case officer confirms every match**: a score is never a verdict.
 
-Every week, countless individuals go missing due to accidents, memory loss, or natural disasters, leaving families to frantically search through random police stations and hospitals. **Shondhan** centralizes this process. By leveraging AI-driven multimodal feature matching, the platform connects "Found Streams" (institutions like police and hospitals) with "Searching Streams" (families), narrowing down searches with percentage-based accuracy to reunite families faster.
-
-> **Target Audience:** Designed with a very basic, minimal, and intuitive interface so that people of all ages and technical backgrounds can use it effortlessly.
+Bangla first (English toggle), dark mode by default (light toggle), glass UI, large touch targets, separate pages for every task.
 
 ---
 
-## 🚀 Getting Started — Run on Your PC
+## What is built
 
-Follow these steps to clone, set up, and run the full Shondhan project locally.
+| Part of the idea | Where it lives |
+|---|---|
+| **Scenario 1: police station** posts a found person: face photos, NID / student / worker ID / licence pictures, body marks, belongings, location, contact | `/records/new` (police login) |
+| **Scenario 2: medical team** posts a patient, with each mark or injury pinned to an exact body place (region → place nested dropdowns), plus medical notes | `/records/new` (medical login) |
+| **Scenario 3: family**, new visitor: **welcome page → one big "Start report" page → the report in short steps (2–3 related questions per page, 12 pages with a progress bar and a review page) → their own name / phone / email / age → SMS code + password**. The account and the report are created together. At least 3 photos (max 8), optional ID pictures. Typed answers survive a page reload | `/`, `/report`, `/report/steps` |
+| Logged-in family adds another report: same start page and steps, without the account part | `/cases/new` |
+| **Phone check by SMS code** at family and staff signup; **forgot password** by SMS code | `/report/steps`, `/signup/staff`, `/forgot` |
+| **Police see every missing report**, with search by name/place/belongings/family number and filters (gender, division, age range, last-seen dates, body mark type and region, cannot speak, has matches, sort). Case officers and admins too; medical teams and families cannot | `/reports` |
+| **3D body figure**: in every form (family, police, medical) a mark's place is chosen by tapping the exact spot on a 3D human figure (drag to turn, pinch/scroll to zoom, front/back/left/right buttons). A list picker is there for people who can't tap, and it also pins the mark on the figure | `frontend/src/body/` |
+| Marks are shown as numbered pins on a 3D figure wherever a person is displayed; officers see both sides on one figure (red = family, blue = found record) | case, match, record and officer pages |
+| **Print**: families print an A4 "নিখোঁজ / MISSING" poster (photos, description, front/back figure with numbered marks, their phone number, 999); police/hospitals print an information sheet; a family can print a match to take to the station/hospital. "Save as PDF" works from the same print window | 🖨 buttons on those pages |
+| Victim conditions: conscious, unconscious, mute, accident/disaster, **deceased (restricted)** | condition picker on the record form |
+| **Duplicate merge with permission on both ends**: police and hospital records of the same person are detected; both reporters must agree before merging | merge cards on the reporter dashboard |
+| **Matching with % accuracy**: only matches **over 50%** are kept; families are told about them at once (bands: strong ≥ 85, possible ≥ 60) | `backend/cases/matching.py` |
+| **Eye-catching dashboard alert** and in-app notifications (badge, alerts page, refreshes every minute) | family dashboard, `/notifications` |
+| **"Who visited which victim info"**: every view by a family, officer or admin is logged; families see "seen by officials N times", reporters see "viewed by families N times" | `AuditLog`, officer "who viewed this" panel |
+| **Found = removed completely**: closing a post, closing a record or marking "reunited" deletes rows **and photo files** | family case page, record page, officer match page |
+| Deceased records: families never see photos, place or score; only "an officer will contact you" after an officer confirms | enforced on the server |
+| Staff approval: police / hospital apply, admin verifies and approves | `/signup/staff`, `/admin` |
+| Case officer review queue with side-by-side comparison, confirm / rule out, reunite | `/officer` |
+| Immutable audit ledger for auditors | `/audit` |
+| Profile page with extra details | `/profile` |
 
-### Prerequisites
+### Roles
 
-Make sure these are installed on your system:
-
-| Tool           | Minimum Version | Install Guide |
-|----------------|-----------------|---------------|
-| **Git**        | 2.30+           | [git-scm.com](https://git-scm.com/downloads) |
-| **Python**     | 3.10+           | [python.org](https://www.python.org/downloads/) |
-| **Node.js**    | 18+             | [nodejs.org](https://nodejs.org/) |
-| **npm**        | 9+              | Comes with Node.js |
-| **PostgreSQL** | 14+             | [postgresql.org](https://www.postgresql.org/download/) |
+| Role | How the account is made | Home page |
+|---|---|---|
+| family | report first, then own details + SMS code (18+) | `/dashboard` |
+| police, medical | apply at `/signup/staff`, admin approves | `/reporter` |
+| officer, auditor, admin | created by an admin at `/admin/users` (or `createsuperuser`) | `/officer`, `/audit`, `/admin` |
 
 ---
 
-### Step 1 — Clone the Repository
+## Run it
+
+### 1. Database (once)
 
 ```bash
-git clone https://github.com/MRA810/Shondhan.git
-cd Shondhan
-```
-
-To work on the development branch:
-
-```bash
-git checkout atest
-```
-
----
-
-### Step 2 — Set Up PostgreSQL Database
-
-Open a terminal and run:
-
-```bash
-# Start PostgreSQL (if not already running)
-sudo systemctl start postgresql     # Linux
-# or: brew services start postgresql  # macOS
-
-# Enter the PostgreSQL shell
 sudo -u postgres psql
-```
-
-Inside the `psql` shell, run:
-
-```sql
 CREATE USER shondhan WITH PASSWORD 'shondhan_pass';
 CREATE DATABASE shondhan OWNER shondhan;
-GRANT ALL PRIVILEGES ON DATABASE shondhan TO shondhan;
 \q
 ```
 
----
+> **Upgrading from the login-only version:** the user table gained new columns and the migrations were regenerated, so start from a fresh development database (your current one only has test signups):
+> ```bash
+> sudo -u postgres psql -c "DROP DATABASE shondhan;" -c "CREATE DATABASE shondhan OWNER shondhan;"
+> ```
+> Then replace the whole `backend/` and `frontend/src/` folders with these ones (keep your `backend/.env` and `venv/`).
 
-### Step 3 — Set Up the Backend (Django)
+### 2. Backend
 
 ```bash
 cd backend
-
-# Create a Python virtual environment
-python3 -m venv venv
-
-# Activate the virtual environment
-source venv/bin/activate          # Linux / macOS
-# venv\Scripts\activate           # Windows (PowerShell)
-
-# Install Python dependencies
+python3 -m venv venv && source venv/bin/activate     # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-```
-
-#### Configure Environment Variables
-
-Create the `.env` file inside the `backend/` folder:
-
-```bash
-cat > .env << 'EOF'
-DJANGO_SECRET_KEY=change-me-to-a-random-string
-DJANGO_DEBUG=1
-DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
-DB_NAME=shondhan
-DB_USER=shondhan
-DB_PASSWORD=shondhan_pass
-DB_HOST=localhost
-DB_PORT=5432
-CORS_ALLOWED_ORIGINS=http://localhost:5173
-EOF
-```
-
-> **⚠️ Important:** Change `DJANGO_SECRET_KEY` to a long random string in production. Keep `DB_PASSWORD` matching whatever you set in Step 2.
-
-#### Apply Database Migrations
-
-```bash
+cp .env.example .env                                 # set DB_PASSWORD
 python manage.py migrate
-```
-
-#### Create an Admin User (Optional)
-
-```bash
-python manage.py createsuperuser
-```
-
-#### Start the Backend Server
-
-```bash
+python manage.py seed_demo                           # optional: demo accounts + sample posts
 python manage.py runserver
 ```
 
-The Django API will be available at **http://localhost:8000**.
-
----
-
-### Step 4 — Set Up the Frontend (React + Vite)
-
-Open a **new terminal** (keep the backend running):
+### 3. Frontend
 
 ```bash
 cd frontend
-
-# Install Node.js dependencies
 npm install
-
-# Start the Vite dev server
-npm run dev
+npm run dev          # http://localhost:5173  (/api is proxied to Django on :8000)
 ```
 
-The frontend will be available at **http://localhost:5173**.
+Or run `./install.sh` once and then `./start_server.sh` (Windows: `install.bat`, `start_server.bat`).
 
-> Vite is configured to proxy all `/api/*` requests to the Django backend at `localhost:8000`, so everything works seamlessly in development.
+### Open it on other devices
 
----
+**Same Wi-Fi (phones, other laptops):**
 
-### Step 5 — Open in Browser
-
-Go to **http://localhost:5173** in your browser.
-
-- **Sign up** as a new family user from the registration page.
-- **Log in** with your phone number/email and password.
-- You'll land on the **Family Dashboard** showing your profile and cases (pulled live from the database).
-
----
-
-## 📁 Project Structure
-
-```
-Shondhan/
-├── README.md
-├── backend/                    # Django REST API
-│   ├── .env                    # Environment variables (not committed)
-│   ├── manage.py
-│   ├── requirements.txt        # Python dependencies
-│   ├── config/                 # Django project settings
-│   │   ├── settings.py
-│   │   ├── urls.py
-│   │   └── wsgi.py
-│   └── accounts/               # Main app (users, cases, matches)
-│       ├── models.py           # User, FamilyCase, CaseMatch models
-│       ├── serializers.py      # DRF serializers
-│       ├── views.py            # API views
-│       ├── urls.py             # API routes
-│       └── migrations/         # Database migrations
-└── frontend/                   # React SPA (Vite)
-    ├── package.json
-    ├── vite.config.js
-    ├── index.html
-    └── src/
-        ├── main.jsx            # App entry point
-        ├── App.jsx             # Routes
-        ├── api.js              # API client (login, register, me, cases)
-        ├── i18n.js             # Bangla & English translations
-        ├── prefs.jsx           # Language & theme context
-        ├── styles.css          # Global styles (Glassmorphism)
-        └── pages/
-            ├── Login.jsx
-            ├── Signup.jsx
-            ├── Dashboard.jsx   # Family dashboard
-            └── Toggles.jsx     # Language & theme toggles
+```bash
+./start_server.sh --lan
 ```
 
----
+It prints the address to open, e.g. `http://192.168.0.105:5173`. Only the website listens on the network; Django stays private on the laptop and is reached through the website. If Ubuntu's firewall is on, allow the port once: `sudo ufw allow 5173/tcp`. Some public/venue Wi-Fi blocks devices from seeing each other; then use a phone hotspot or a tunnel.
 
-## 🔌 API Endpoints
+**From the internet, for a demo (temporary link):** keep `./start_server.sh` running, and in a second terminal:
 
-All API routes are under `/api/auth/`:
-
-| Method | Endpoint                          | Auth | Description |
-|--------|-----------------------------------|------|-------------|
-| POST   | `/api/auth/login/`                | No   | Log in with phone/email + password |
-| POST   | `/api/auth/register/`             | No   | Register a new family user |
-| POST   | `/api/auth/refresh/`              | No   | Refresh JWT access token |
-| GET    | `/api/auth/me/`                   | Yes  | Get current user profile |
-| GET    | `/api/auth/cases/`                | Yes  | List the logged-in user's cases |
-| POST   | `/api/auth/cases/`                | Yes  | Create a new missing person case |
-| GET    | `/api/auth/cases/<id>/matches/`   | Yes  | List matches for a specific case |
-
----
-
-## 🌐 Localization
-
-- **Primary Language:** Bangla (বাংলা)
-- **Secondary Language:** English (Seamless toggle available)
-
----
-
-## ✨ Key Features & Scenarios
-
-### 1. Police Station Portal (Scenario 1)
-
-When a victim is found and handed over to the police, authorized personnel can create a digital record:
-
-- Upload facial photos, NID/Student ID, Driver's License.
-- Log physical traits, previous body marks, and belongings via easy-to-use nested dropdowns.
-- Record location and contact details.
-
-### 2. Medical Team Portal (Scenario 2)
-
-When an unidentified victim is brought in for treatment, medical staff can update the system:
-
-- Upload medical traits specifically mapped to body locations using intuitive dropdowns.
-- Log current condition, hospital location, and contact details.
-
-### 3. Family Search Portal (Scenario 3)
-
-Families searching for a loved one can create a missing person post:
-
-- Upload at least 3 mandatory photos of the missing person (plus optional ID documents).
-- Provide text-based physical traits.
-- Submit family contact info (Name, Phone, optional Email, Relationship, Age).
-- Monitor profile visits and track matching progress.
-
-### ⚙️ Core Functionality
-
-- **Smart Merging:** If a Police Station and a Hospital report the same victim, the system detects duplicate submissions and merges them (with mutual permission).
-- **AI Matching & Notifications:** When a family uploads a profile, the system suggests potential matches from the database with a **% accuracy score**. Eye-catching dashboard notifications alert families instantly.
-- **Auto-Cleanup:** Once a missing person is successfully found and verified, their record is permanently removed from the active database to ensure privacy and data relevance.
-
----
-
-## 💻 Tech Stack
-
-- **Frontend:** React.js + Vite (SPA with client-side routing)
-- **Backend:** Django + Django REST Framework
-- **Database:** PostgreSQL
-- **Auth:** JWT (via `djangorestframework-simplejwt`)
-- **Future:** Qdrant (Vector DB for AI search), Redis, InsightFace, YOLOv8-seg, OpenCLIP
-
----
-
-## 🎨 UI/UX & Design System
-
-The application features a modern **Glassmorphism (Glassy UI)** aesthetic with transparent elements to provide a clean, uncluttered, and soothing experience.
-
-**Color Palette:**
-
-- **Dark Mode (Default):**
-  - Background/Base: `#2A1A0E`
-  - Accents: `#D4621A`, `#F4AE52`, `#FEF3E2`
-- **Light Mode:**
-  - Background/Base: `#FCF9EA`
-  - Accents: `#DB9558`, `#97A87A`, `#A8BBA3`
-
----
-
-## 🏗️ System Architecture
-
-### Process Flow
-
-```text
-       [SEARCHING STREAM]                                  [FOUND STREAM]
-- Family / Police GD Postings                 - Emergency Trauma Units
-- Old Photos, Age, Clothing                   - Shelters & Relief Camps
-- Distinctive Scars / Tattoos                 - Forensic Morgue Records
-               │                                            │
-               └───────────────────────┬────────────────────┘
-                                       ▼
-                        [Multimodal Feature Ingestion]
-                  - Facial geometry (swelling/age-invariant)
-                  - Biometric marks (tattoos, birthmarks, scars)
-                  - Attire context (color, fabric, accessories)
-                                       │
-                                       ▼
-                         [Hybrid Vector Search & Match]
-                  Evaluates similarity across both streams in < 1s
-                                       │
-                 ┌─────────────────────┴─────────────────────┐
-                 ▼                                           ▼
-       High-Confidence Match                          Ambiguous Match
-        (Score ≥ Threshold)                         (Review Queue with
-                 │                                 Visual Heatmaps / XAI)
-                 ▼                                           │
-      Verified Location Alert                                ▼
-      to Family & Case Officer                      Officer Verification
+```bash
+cloudflared tunnel --url http://localhost:5173     # prints https://<random>.trycloudflare.com
 ```
 
-### Infrastructure Layering
+Install `cloudflared` once (it is not in the snap store):
 
-```text
-+-------------------------------------------------------------------------+
-|                        CLIENT PRESENTATION LAYER                        |
-|   [Citizen/Family Portal]    [ER Trauma Intake UI]    [Police Desk]     |
-+-------------------+---------------------+---------------------+---------+
-                    |                     |                     |
-                    v                     v                     v
-+-------------------------------------------------------------------------+
-|                   API GATEWAY & AUTHENTICATION LAYER                    |
-|         FastAPI Gateway + JWT RBAC + Automated PII Vault Filter         |
-+-------------------+-------------------------------------------+---------+
-                    |                                           |
-                    v                                           v
-+---------------------------------------+ +-------------------------------+
-|     MULTIMODAL BIOMETRIC PIPELINE     | |    GOVCOPILOT AGENTIC CORE    |
-| - InsightFace (512-d Face Vector)     | | - Unstructured GD NER         |
-| - YOLOv8-seg (Scars/Tattoo Crop)      | | - Statutory SOP RAG Engine    |
-| - OpenCLIP (512-d Apparel Vector)     | | - LangGraph Triage Agent      |
-+-------------------+-------------------+ +--------------+----------------+
-                    |                                    |
-                    +------------------+-----------------+
-                                       |
-                                       v
-+-------------------------------------------------------------------------+
-|                        DATA & PERSISTENCE LAYER                         |
-|   [Qdrant Vector DB]       [PostgreSQL Relational DB]   [Redis Queue]   |
-| - HNSW Hybrid Search       - Cases, Intakes, PII        - Async Jobs    |
-| - Multi-Vector Payloads    - Immutable Audit Ledger     - Alert Bus     |
-+-------------------------------------------------------------------------+
+```bash
+curl --location --output cloudflared.deb "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$(dpkg --print-architecture).deb"
+sudo dpkg -i cloudflared.deb
+```
+ `ngrok http 5173` works too. Anyone with the link can open the app, so for that set `DJANGO_DEBUG=0` in `backend/.env` (no error details, no on-screen SMS codes) and close the tunnel after the demo.
+
+### SMS codes (signup, forgot password)
+
+In development nothing is sent: with `SMS_BACKEND=console` (the default) the code is printed in the Django log, **and** shown on the page in a "Development mode" box (only while `DJANGO_DEBUG=1`).
+
+For real SMS, set in `backend/.env`:
+
+```
+SMS_BACKEND=bulksmsbd        # or smsnetbd
+SMS_API_KEY=your-key
+SMS_SENDER_ID=your-approved-sender-id
+```
+
+Codes are 6 digits and last 5 minutes. Only a hash is stored. Each number can request one code per minute and 5 per hour, and a code allows 5 wrong tries. "Forgot password" gives the same answer whether or not the number has an account.
+
+### Demo accounts (`seed_demo`)
+
+Password for all: **`Shondhan@2026`**
+
+| Role | Phone |
+|---|---|
+| admin | 01700000001 |
+| case officer | 01700000002 |
+| police (Mirpur Model Thana) | 01700000003 |
+| medical (Dhaka Medical College Hospital) | 01700000004 |
+| auditor | 01700000005 |
+| family (Ayesha Begum, searching for Rahim Uddin) | 01700000006 |
+
+The demo already contains a family post, a police record and a hospital record of the same man. So you see two matches (90% and 77%) and a merge request between the police and the hospital straight away.
+
+A good walkthrough is: family alert → police and medical both approve the merge → officer confirms the match → family sees "an officer checked a match" → officer marks reunited and everything is deleted.
+
+### Tests
+
+```bash
+cd backend && python manage.py test        # 48 tests, needs PostgreSQL running
+DB_ENGINE=sqlite python manage.py test     # same tests without PostgreSQL
 ```
 
 ---
 
-## 🧍 Victim Categorization
+## How matching works
 
-The platform handles various victim conditions, strictly categorizing sensitive data:
+`backend/cases/matching.py` compares a family post with every active found record (opposite gender is skipped):
 
-**1. Unidentified Living People (Reported by authorized reporters)**
+| Signal | Points |
+|---|---|
+| Same ID number (NID etc.) | 97, straight away |
+| Same gender | 12 |
+| Age inside the record's estimated range (±3) | 18 |
+| Body marks: same type and pinned within 6 cm on the 3D figure (15 cm: most points), otherwise same body place → same region → elsewhere | up to 26 |
+| Clothing item + colour, and belongings words | up to 20 |
+| Name the person gave matches | 10 |
+| Same division | 8 |
+| Skin / build / hair, 3 each | up to 12 |
+| Height within 8 cm | 4 |
+| Cannot speak ↔ mute | 5 |
+| Found *before* they went missing | −20 |
 
-- Conscious and able to communicate.
-- Unconscious or unable to communicate.
-- Mute or otherwise unable to provide identifying details.
-- Found after accidents or disasters.
+Only pairs scoring **over 50** are stored; families are notified about them straight away (restricted/deceased ones go to the officer queue instead). Police/hospital pairs scoring 60 or more are offered for merging.
 
-**2. Unidentified Deceased People (Restricted, sensitive records)**
-
-- Deceased person with possible identifying information.
-- Deceased person with no confirmed identity.
-- Records containing forensic descriptions, clothing, belongings, or other evidence.
-
----
-
-## ❓ Troubleshooting
-
-| Problem | Solution |
-|---------|----------|
-| `FATAL: role "shondhan" does not exist` | Run the `CREATE USER` SQL command from Step 2 |
-| `FATAL: database "shondhan" does not exist` | Run the `CREATE DATABASE` SQL command from Step 2 |
-| `Error: That port is already in use` (8000) | Kill the old process: `kill $(lsof -ti :8000)` or use a different port |
-| Frontend shows blank white page | Check the browser console (F12) for errors; make sure the backend is running |
-| `ModuleNotFoundError` on backend start | Make sure you activated the venv: `source venv/bin/activate` |
-| `npm install` fails | Make sure Node.js 18+ is installed: `node --version` |
+**Plugging in the AI pipeline:** `face_similarity(case, record)` currently returns `None`. When InsightFace / OpenCLIP vectors in Qdrant are ready, return a 0–1 similarity there and it is blended into the same score. Nothing else changes.
 
 ---
 
-## 🚀 Future Scope
+## API (all under `/api/`, JWT Bearer)
 
-- Support and specific workflows for kidnapped victims.
-- Further expansion of AI matching capabilities (e.g., aging progression for long-term missing individuals).
-- Integration with Qdrant vector database for facial/biometric AI search.
-- Redis-based real-time notifications and background job processing.
+| Who | Method and path | Purpose |
+|---|---|---|
+| anyone | `POST auth/login/`, `auth/refresh/` | login (`invalid` / `locked` / `pending`) |
+| anyone | `POST auth/otp/send/` `{"phone", "purpose": "signup" \| "reset"}` | send a 6-digit SMS code |
+| anyone | `POST auth/register-report/` (multipart: report fields + photos + `full_name, phone, email, age, password, consent, otp`) | new family: account + report together, returns tokens |
+| anyone | `POST auth/register/`, `auth/register-staff/` (both need `otp`) · `POST auth/password/reset/` `{"phone", "otp", "password"}` | account only, staff application, forgot password |
+| police, officer, admin | `GET reports/?q=&gender=&division=&age_min=&age_max=&seen_from=&seen_to=&mark_type=&mark_region=&cannot_speak=1&has_matches=1&sort=` · `GET reports/<id>/` | every family report |
+| any user | `GET/PATCH auth/me/` | profile |
+| any user | `GET notifications/`, `POST notifications/read/` | alerts (`{"ids": [...]}` or all) |
+| any user | `GET photos/case/<id>/`, `photos/record/<id>/` | private photos, permission-checked |
+| family | `GET family/summary/` · `POST family/cases/` (multipart) · `GET/DELETE family/cases/<id>/` · `GET family/matches/<id>/` | dashboard, post, view/close, match detail |
+| police/medical | `GET reporter/summary/` · `GET/POST reporter/records/` · `GET/PATCH/DELETE reporter/records/<id>/` · `DELETE reporter/records/<id>/photos/<pid>/` · `POST reporter/merges/<id>/` `{"approve": true}` | records and merges |
+| officer, admin | `GET officer/queue/?status=&kind=` · `GET/POST officer/matches/<id>/` `{"decision": "confirm" \| "reject", "note"}` · `POST officer/matches/<id>/reunite/` · `GET officer/records/[<id>/]` | review |
+| admin | `GET admin/summary/` · `GET/POST admin/users/` · `PATCH admin/users/<id>/` `{"action": "approve" \| "activate" \| "deactivate" \| "unlock"}` · `DELETE admin/users/<id>/` (reject request) | accounts |
+| auditor, admin | `GET audit/?action=&actor_role=&target_type=&target_id=&page=` | ledger |
 
 ---
 
-## 📄 License
+## Project structure
 
-This project is developed for the **AI Builders Congress**.
+```
+backend/
+  config/            settings (PostgreSQL from .env), urls
+  accounts/          User model (roles, staff fields), login with lockout, signup, staff application, profile,
+                     otp.py + sms.py (SMS codes: console / bulksmsbd / sms.net.bd), PhoneOTP model
+  cases/
+    models.py        MissingCase, CasePhoto, FoundRecord, RecordPhoto, Match, MergeRequest, Notification, AuditLog
+    traits.py        shared dropdown vocabulary, mark validation (incl. the 3D point "pos": [x, y, z]) (body regions → places, marks, clothing, colours, traits, ID types)
+    matching.py      scoring, duplicate detection, face_similarity() hook
+    services.py      notifications, audit, officer review, reunite, merge
+    views.py, urls.py, tests.py
+    management/commands/seed_demo.py
+frontend/src/
+  api.js             fetch wrapper, token refresh, private photo loader
+  i18n.js            every text in Bangla and English
+  traits.js          same vocabulary as backend/cases/traits.py
+  body/              3D figure: body3d.js (three.js mannequin, tap-to-pin, print snapshots), bodyMap.js (tap point → body place),
+                     BodyModel.jsx, MarksFigure.jsx (loaded only when a page needs it)
+  session.jsx, prefs.jsx, hooks.js, styles.css
+  components/        Layout (role-aware nav, bottom tab bar on phones), form inputs, PrintSheet (A4 poster / sheet), shared UI
+  pages/             Login, Forgot, StaffSignup, Notifications, Profile
+    report/          Welcome, ReportStart, ReportWizard (the step-by-step report, guest + member), GuestReport
+    reports/         Reports (police: every family report, search + filters)
+    family/          FamilyHome, MemberReport, CaseView, MatchView
+    reporter/        ReporterHome, RecordForm, RecordView, MergeCard
+    officer/         OfficerQueue, OfficerMatch, OfficerLists
+    admin/           AdminHome, AdminUsers, AuditLog
+```
+
+## Design
+
+- **Dark theme (default):** background `#194350`, borders `#9DBEB8`, details (secondary text, links, labels, count badges) `#FFC2B4`, highlights (main buttons, active items, rings) `#FF8882`, text `#FFF2EF`. Button text on the coral is a darker shade of the background (6.5:1).
+- **Light theme:** the original palette `#FCF9EA` / `#DB9558` / `#97A87A` / `#A8BBA3`. `#DB9558` carries dark text (6.8:1), because white on it fails contrast. The greens are only used for borders and decoration.
+- **Background:** a soft gradient glow (dark: `#9DBEB8` top-left and `#FF8882` bottom-right, capped at 20% / 28% so text standing on it stays readable; light: `#DB9558` and `#A8BBA3`).
+- **Layout style (flat dashboard):**
+  - a top navigation bar: logo and page links on the left; on the right the highlighted **+ Add post / + New record** button, the **bell** (count badge, rings while there are unread alerts), language/theme, who is logged in, and an outlined **Logout** button (it goes back to the main page). On phones the links move to a bottom tab bar with a raised "+" button in the middle;
+  - **pop-up messages**: the app checks every 30 s and slides in a pop-up on any page when a new match or alert arrives (one at a time on phones, with "+N more"); each alert pops up once; the unread count also shows in the browser tab title;
+  - solid panels with 4px corners and no blur;
+  - UPPERCASE section titles with square count badges;
+  - list rows with a round photo, "source | date" details, pill tags, a score ring and "›";
+  - "→" on the main actions;
+  - a light "feature" panel for the match alert.
+- Every text/background pair meets **WCAG AA** (at least 4.5:1). All colours are CSS variables at the top of `frontend/src/styles.css`.
+- **Nothing gets skipped by accident:**
+  - The marks page asks "Does … have any marks? Yes / No / Not sure" first.
+  - A mark is saved the moment its type is tapped (no "Add" button to forget).
+  - A tapped place without a type, or a clothing item picked but not added, stops the person with a clear message.
+  - The review page lists every section with ✓ or a highlighted "Not given" and an "Add" button, plus "X of 9 sections filled in".
+- **Main page** is for families; an **Authority login** strip leads to `/authority`, which has police (login + apply), doctor / hospital (login + apply) and case officer / admin / auditor (login) options.
+
+## The 3D figure
+
+- Model space is metres, feet at y = 0, facing the viewer (+z). The person's **left** is +x, so it appears on screen-right in the front view, like looking at someone. The help text says this.
+- Each mark is saved as `{"region", "part", "type", "detail", "pos": [x, y, z]}`. The region and exact place come from the tap (`bodyMap.js → locate`), so lists, matching and printouts stay readable even without 3D.
+- Devices without WebGL fall back to the region → exact place dropdowns.
+- three.js (~130 kB gzipped) is a separate chunk that loads only on pages that show the figure.
+
+## Privacy and safety
+
+- Photos are stored in `backend/private_media/`, outside any public folder, and served only to people allowed to see them: the owner, a case officer, the reporter, or a family with a living match (face photos only, never ID pictures).
+- Deceased records never reveal anything to families. Their printed sheet is marked CONFIDENTIAL.
+- Printed missing posters never include ID pictures or ID numbers.
+- Every view, create, change, merge and delete is written to an append-only audit log, which survives deletion of the case.
+- Login lockout (5 tries / 15 min), throttling, 15-minute access tokens with refresh, admin-approved staff accounts.
+
+**Before going online:** set `DJANGO_DEBUG=0`, a long random `DJANGO_SECRET_KEY`, real `DJANGO_ALLOWED_HOSTS` and `CORS_ALLOWED_ORIGINS`, and a new database password. Serve with gunicorn behind HTTPS, build the frontend with `npm run build`, and back up `private_media/` together with the database.
+
+## Not built yet (future scope)
+
+- The real face / mark / apparel AI models (the hook is ready).
+- SMS alerts for new matches (SMS is used only for codes so far; alerts are in-app).
+- Kidnapping workflows.

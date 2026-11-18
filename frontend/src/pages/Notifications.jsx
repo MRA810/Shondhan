@@ -1,56 +1,52 @@
-import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { getNotifications, markRead } from "../api.js";
+import { useApi } from "../hooks.js";
 import { usePrefs } from "../prefs.jsx";
 import { useSession } from "../session.jsx";
+import { Loaded } from "../components/ui.jsx";
+import { notifLink, notifText } from "../components/notify.js";
 
-// One line of text + time for a notification. Shared with the dashboard preview.
-export function NotificationText({ n }) {
-  const { t, num, dateTime } = usePrefs();
-  const text =
-    n.kind === "match" ? t("n_match", { name: n.case_name, pct: num(n.score) })
-    : n.kind === "officer" ? t("n_officer", { name: n.case_name })
-    : t("n_system");
+export function NotifList({ items, onOpen }) {
+  const { t, dateTime } = usePrefs();
+  const { user } = useSession();
+  if (!items.length) return <p className="empty muted">{t("noNotif")}</p>;
   return (
-    <>
-      <span className="dot" aria-hidden="true" />
-      <span className="grow">
-        {!n.is_read && <span className="pill hot">{t("newTag")}</span>} {text}
-        <span className="muted block">{dateTime(n.created_at)}</span>
-      </span>
-    </>
+    <ul className="notifs">
+      {items.map((n) => {
+        const to = notifLink(n, user.role);
+        const body = (
+          <>
+            <span className="dot" aria-hidden="true" />
+            <span className="grow">
+              {!n.is_read && <span className="sr">{t("newTag")}: </span>}
+              {notifText(t, n)}
+              <span className="block muted small">{dateTime(n.created_at)}</span>
+            </span>
+          </>
+        );
+        return (
+          <li key={n.id} className={n.is_read ? "" : "unread"}>
+            {to ? <Link to={to} onClick={() => onOpen?.(n)} className="notiflink">{body}</Link> : body}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
 export default function Notifications() {
   const { t } = usePrefs();
-  const { reload } = useSession();
-  const [items, setItems] = useState(null);
-  const [failed, setFailed] = useState(false);
-
-  const load = () => getNotifications().then((d) => { setItems(d); setFailed(false); }).catch(() => setFailed(true));
-  useEffect(() => { load(); }, []);
-
-  async function readAll() {
-    try { await markRead(); await load(); reload(); } catch { setFailed(true); }
-  }
-
-  const hasUnread = items?.some((n) => !n.is_read);
+  const { refreshUnread } = useSession();
+  const q = useApi(getNotifications);
+  const readAll = () => markRead().then(() => { q.reload(); refreshUnread(); });
+  const open = (n) => { if (!n.is_read) markRead([n.id]).then(refreshUnread); };
   return (
     <>
-      <div className="sec">
+      <div className="sec first">
         <h1>{t("notifTitle")}</h1>
-        {hasUnread && <button className="ghost" onClick={readAll}>{t("markAll")}</button>}
+        {q.data?.unread > 0 && <button className="ghost" onClick={readAll}>{t("markAll")}</button>}
       </div>
-      {failed && <p className="error" role="alert">{t("loadFail")}</p>}
-      {items === null && !failed && <p className="muted" role="status">{t("loading")}</p>}
-      {items?.length === 0 && <div className="panel empty"><p>{t("noNotif")}</p></div>}
-      {items?.length > 0 && (
-        <ul className="notifs panel">
-          {items.map((n) => (
-            <li key={n.id} className={n.is_read ? "" : "unread"}><NotificationText n={n} /></li>
-          ))}
-        </ul>
-      )}
+      <Loaded q={q}>{(d) => <div className="panel flush"><NotifList items={d.items} onOpen={open} /></div>}</Loaded>
     </>
   );
 }
