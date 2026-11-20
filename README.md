@@ -144,6 +144,34 @@ DB_ENGINE=sqlite python manage.py test     # same tests without PostgreSQL
 
 ---
 
+## Build for production
+
+Development (`./start_server.sh`) runs two servers: Vite for the website and Django for the API.
+Production runs **one**: the React site is compiled once and Django serves it together with the API.
+
+```bash
+# 1. settings: in backend/.env
+DJANGO_DEBUG=0
+DJANGO_SECRET_KEY=...            # python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+DJANGO_ALLOWED_HOSTS=your-domain.com,localhost,127.0.0.1
+CSRF_TRUSTED_ORIGINS=https://your-domain.com
+SMS_BACKEND=bulksmsbd            # real SMS codes (console only prints them in the log)
+
+# 2. build (after every update)
+./build.sh
+
+# 3. run  ->  http://localhost:8000
+./start_production.sh
+```
+
+`build.sh` installs packages, builds the website (`frontend/dist/`), applies migrations, collects the admin
+styles and downloads the face models. `start_production.sh` runs gunicorn (2 workers x 4 threads).
+To try the production build on your laptop over plain http, also set `DJANGO_HTTPS=0`.
+For a demo without an SMS provider, `OTP_DEMO_MODE=1` shows the code on screen. Never use that with real users.
+
+To put it online, point a Cloudflare Tunnel at `http://localhost:8000`:
+`cloudflared tunnel --url http://localhost:8000`.
+
 ## How matching works
 
 `backend/cases/matching.py` compares a family post with every active found record (opposite gender is skipped):

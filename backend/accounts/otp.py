@@ -41,7 +41,7 @@ def issue(phone, purpose):
     except SMSError:
         otp.delete()
         raise
-    dev = settings.DEBUG and getattr(settings, "SMS_BACKEND", "console") == "console"
+    dev = (settings.DEBUG or getattr(settings, "OTP_DEMO_MODE", False)) and getattr(settings, "SMS_BACKEND", "console") == "console"
     return code if dev else None
 
 

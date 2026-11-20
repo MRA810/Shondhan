@@ -214,7 +214,7 @@ export default function ReportWizard({ guest }) {
         {step === "who" && (
           <>
             <Field id="person_name" label={t("c_name")} error={err.person_name}>
-              <input id="person_name" maxLength={100} autoFocus value={f.person_name} onChange={set("person_name")} {...inv("person_name")} />
+              <input id="person_name" autoComplete="off" maxLength={100} autoFocus value={f.person_name} onChange={set("person_name")} {...inv("person_name")} />
             </Field>
             <Select id="relationship" label={t("relation")} value={f.relationship} onChange={(v) => val("relationship", v)} options={RELATIONS} prefix="rel_" error={err.relationship} />
           </>

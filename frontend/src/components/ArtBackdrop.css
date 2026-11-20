@@ -1,0 +1,44 @@
+/* ---------- background artwork on the report pages (components/ArtBackdrop.jsx) ---------- */
+.artbg, .artshow { position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+.artpage { position:relative; z-index:1; }
+/* desktop: floating pictures */
+.artcard { position:absolute; left:0; top:0; will-change:transform; transform-origin:center; }
+.artfade { opacity:0; transform:scale(.82); transition:opacity 1.8s ease, transform 1.8s cubic-bezier(.2,.7,.2,1); }
+.artfade.in { opacity:.95; transform:none; }
+.artmove { will-change:transform; transform-style:preserve-3d; border-radius:10px; overflow:hidden;
+  box-shadow:0 18px 42px rgba(0,0,0,.32); border:1px solid color-mix(in srgb,var(--edge) 45%,transparent); }
+:root[data-theme="light"] .artmove { box-shadow:0 14px 34px rgba(60,40,20,.18); }
+.artmove img { display:block; width:100%; height:auto; user-select:none; -webkit-user-drag:none; }
+/* boxes and text on top of the pictures: see-through frosted glass. The pictures show through, blurred
+   just enough that the text in front stays sharp; a soft text shadow keeps it readable over bright spots. */
+.artpage .panel, .artpage .glass, .artpage .rowlist {
+  background:color-mix(in srgb,var(--surface) 58%,transparent);
+  -webkit-backdrop-filter:blur(7px) saturate(1.2); backdrop-filter:blur(7px) saturate(1.2); }
+.artpage .panel :is(h1,h2,h3,p,li,label,legend,span,.muted,.note,.steps) { text-shadow:0 1px 3px rgba(0,0,0,.55); }
+:root[data-theme="light"] .artpage .panel { background:color-mix(in srgb,var(--surface) 64%,transparent); }
+:root[data-theme="light"] .artpage .panel :is(h1,h2,h3,p,li,label,legend,span,.muted,.note,.steps) { text-shadow:0 0 6px rgba(255,253,246,.95), 0 0 2px rgba(255,253,246,.9); }
+.artpage .panel .primary, .artpage .panel .primary * { text-shadow:none; }
+/* inputs stay solid so typing is always easy to read */
+.artpage .panel :is(input,select,textarea) { background:var(--surface2); }
+/* welcome page: a picture passing behind the title or text blurs and fades as a whole, then sharpens again */
+.artcard .artmove { transition:filter 1.2s ease, opacity 1.2s ease; }
+.artcard.under .artmove { filter:blur(6px) saturate(.9); opacity:.35; }
+/* phone: slow slideshow, a little see-through */
+.artshow::after { content:""; position:absolute; inset:0; background:color-mix(in srgb,var(--bg) 45%,transparent); }
+.artshow .slide { position:absolute; inset:-2%; background-size:cover; background-position:center; opacity:0; will-change:transform,opacity; }
+.artshow .slide.enter { animation:art-fadein 1.8s ease forwards; }
+.artshow .slide.leave { animation:art-fadeout 1.8s ease forwards; }
+.artshow .slide.kb-in.enter { animation:art-zoomin 7s linear forwards, art-fadein 1.8s ease forwards; }
+.artshow .slide.kb-in.leave { animation:art-zoomin 7s linear forwards, art-fadeout 1.8s ease forwards; }
+.artshow .slide.kb-out.enter { animation:art-zoomout 7s linear forwards, art-fadein 1.8s ease forwards; }
+.artshow .slide.kb-out.leave { animation:art-zoomout 7s linear forwards, art-fadeout 1.8s ease forwards; }
+@keyframes art-fadein { from { opacity:0; } to { opacity:1; } }
+@keyframes art-fadeout { from { opacity:1; } to { opacity:0; } }
+@keyframes art-zoomin { from { transform:scale(1); } to { transform:scale(1.14); } }
+@keyframes art-zoomout { from { transform:scale(1.14); } to { transform:scale(1); } }
+@media (prefers-reduced-motion:reduce) {
+  .artshow .slide.enter { animation:art-fadein 2.4s ease forwards !important; }
+  .artshow .slide.leave { animation:art-fadeout 2.4s ease forwards !important; }
+  .artfade { transition:opacity 1s ease !important; }
+}
+@media print { .artbg, .artshow { display:none !important; } }

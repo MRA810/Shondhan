@@ -115,4 +115,4 @@ temp/
 
 
 __pycache__/
-*.py[cod]
+*.py[cod]backend/private_media/

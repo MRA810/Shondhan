@@ -32,6 +32,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # serves the built website (frontend/dist) and /static/
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -81,6 +82,14 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Production: the built React site (npm run build) is served by Django itself, so one address serves
+# both the website and /api/. In development Vite serves it instead.
+FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
+WHITENOISE_ROOT = FRONTEND_DIST if FRONTEND_DIST.exists() else None
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Private photos: never served from a public URL, only through permission-checked API views.
@@ -112,7 +121,15 @@ SMS_SENDER_ID = os.getenv("SMS_SENDER_ID", "")
 
 CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
 
+CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+
+# Demo only: show the SMS code on screen even in production (no SMS provider yet). Never for real users.
+OTP_DEMO_MODE = os.getenv("OTP_DEMO_MODE", "0") == "1"
+
 if not DEBUG:
     SECURE_CONTENT_TYPE_NOSNIFF = True
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
+    # behind Cloudflare Tunnel / a proxy the site is HTTPS even though Django sees plain HTTP
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    HTTPS_ONLY = os.getenv("DJANGO_HTTPS", "1") == "1"  # set 0 to test the production build on http://localhost
+    SESSION_COOKIE_SECURE = HTTPS_ONLY
+    CSRF_COOKIE_SECURE = HTTPS_ONLY

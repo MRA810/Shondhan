@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { usePrefs } from "../../prefs.jsx";
 import { Toggles } from "../../components/ui.jsx";
+import ArtBackdrop from "../../components/ArtBackdrop.jsx";
 
 // Step 2: one big page that says what is needed, then a large Start button.
 export function StartContent({ to, guest }) {
@@ -22,9 +23,12 @@ export function StartContent({ to, guest }) {
 
 export default function ReportStart() {
   return (
-    <div className="page">
-      <Toggles />
-      <main className="guestmain"><StartContent to="/report/steps?s=1" guest /></main>
-    </div>
+    <>
+      <ArtBackdrop />
+      <div className="page artpage">
+        <Toggles />
+        <main className="guestmain"><StartContent to="/report/steps?s=1" guest /></main>
+      </div>
+    </>
   );
 }
